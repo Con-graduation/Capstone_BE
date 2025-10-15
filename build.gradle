@@ -48,6 +48,12 @@ dependencies {
 	
 		// Swagger/OpenAPI (upgrade to support Spring 6.2 / Boot 3.4)
 		implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+
+	// AWS SDK v2 - S3 & Core
+	implementation platform('software.amazon.awssdk:bom:2.25.62')
+	implementation 'software.amazon.awssdk:s3'
+	implementation 'software.amazon.awssdk:sts'
+	implementation 'software.amazon.awssdk:auth'
 	
 	// Test
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
