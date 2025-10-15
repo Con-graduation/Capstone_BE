@@ -3,10 +3,8 @@ package dailyGuitar.capstone.service;
 import dailyGuitar.capstone.dto.UserRegistrationDto;
 import dailyGuitar.capstone.dto.UserResponseDto;
 import dailyGuitar.capstone.entity.User;
-import dailyGuitar.capstone.entity.UserProfile;
 import dailyGuitar.capstone.exception.UserAlreadyExistsException;
 import dailyGuitar.capstone.exception.UserNotFoundException;
-import dailyGuitar.capstone.repository.UserProfileRepository;
 import dailyGuitar.capstone.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -23,10 +21,8 @@ import java.util.Random;
 public class UserService {
 
     private final UserRepository userRepository;
-    private final UserProfileRepository userProfileRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
-
 
     public UserResponseDto registerUser(UserRegistrationDto registrationDto) {
         // 이메일로 임시 사용자 찾기
@@ -43,11 +39,6 @@ public class UserService {
             throw new UserAlreadyExistsException("이미 사용 중인 사용자명입니다.");
         }
 
-        // 닉네임 중복 확인
-        if (userProfileRepository.existsByDisplayName(registrationDto.getNickname())) {
-            throw new UserAlreadyExistsException("이미 사용 중인 닉네임입니다.");
-        }
-
         // 임시 사용자를 실제 사용자로 업데이트
         existingUser.setName(registrationDto.getName());
         existingUser.setUsername(registrationDto.getUsername());
@@ -59,15 +50,6 @@ public class UserService {
 
         User savedUser = userRepository.save(existingUser);
 
-        // 기본 프로필 생성
-        UserProfile profile = UserProfile.builder()
-                .user(savedUser)
-                .displayName(registrationDto.getNickname())
-                .skillLevel(UserProfile.SkillLevel.BEGINNER)
-                .build();
-
-        userProfileRepository.save(profile);
-
         return UserResponseDto.from(savedUser);
     }
 
@@ -76,7 +58,8 @@ public class UserService {
     }
 
     public boolean isNicknameAvailable(String nickname) {
-        return !userProfileRepository.existsByDisplayName(nickname);
+        // UserProfile 제거: 닉네임 중복 체크는 보류 또는 다른 정책으로 대체
+        return true;
     }
 
     public boolean isEmailAvailable(String email) {
