@@ -1,9 +1,11 @@
 package dailyGuitar.capstone.dto.practice;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
+@Schema(name = "PracticeRoutineUpdateRequest", description = "연습 루틴 수정 요청 DTO")
 public class PracticeRoutineUpdateRequestDto {
 	@NotNull
 	private Long id;
