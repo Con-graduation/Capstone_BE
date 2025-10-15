@@ -49,6 +49,10 @@ public class PracticeRoutine {
 	@Column(nullable = false)
 	private Long practiceCount = 0L; // 총 연습 횟수
 
+	// 경험치: repeats * (bpm 계수). bpm 계수는 20->1.2, ... 100->2.0 등 선형 매핑
+	@Column(nullable = false)
+	private Integer xpPerRun = 0;
+
 	@Column(nullable = false, updatable = false)
 	private Instant createdAt;
 
@@ -63,11 +67,20 @@ public class PracticeRoutine {
 		Instant now = Instant.now();
 		this.createdAt = now;
 		this.updatedAt = now;
+		recalculateXpPerRun();
 	}
 
 	@PreUpdate
 	public void onUpdate() {
 		this.updatedAt = Instant.now();
+		recalculateXpPerRun();
+	}
+
+	private void recalculateXpPerRun() {
+		if (repeats == null || bpm == null) { this.xpPerRun = 0; return; }
+		// bpmFactor: 20bpm=1.2, 100bpm=2.0 → 0.8 span over 80 bpm: factor = 1.2 + (bpm-20)*0.01
+		double factor = 1.2 + Math.max(0, bpm - 20) * 0.01d;
+		this.xpPerRun = (int)Math.round(repeats * factor);
 	}
 
 	public Long getId() { return id; }
@@ -78,6 +91,7 @@ public class PracticeRoutine {
 	public Integer getRepeats() { return repeats; }
 	public Integer getBpm() { return bpm; }
 	public Long getPracticeCount() { return practiceCount; }
+	public Integer getXpPerRun() { return xpPerRun; }
 	public Instant getCreatedAt() { return createdAt; }
 	public Instant getUpdatedAt() { return updatedAt; }
 	public Instant getLastPracticedAt() { return lastPracticedAt; }

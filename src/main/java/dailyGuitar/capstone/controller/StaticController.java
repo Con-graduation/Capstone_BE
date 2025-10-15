@@ -67,6 +67,8 @@ public class StaticController {
             jwtTokenProvider.extractUsername(token);
             return true;
         } catch (Exception e) {
+
+
             return false;
         }
     }
