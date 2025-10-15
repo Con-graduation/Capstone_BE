@@ -1,5 +1,6 @@
 package dailyGuitar.capstone.controller;
 
+import dailyGuitar.capstone.dto.common.IdRequest;
 import dailyGuitar.capstone.dto.practice.PracticeRoutineCreateRequestDto;
 import dailyGuitar.capstone.dto.practice.PracticeRoutineResponseDto;
 import dailyGuitar.capstone.dto.practice.PracticeRoutineUpdateRequestDto;
@@ -26,18 +27,25 @@ public class PracticeRoutineController {
 		return ResponseEntity.created(URI.create("/api/routines/" + created.getId())).body(created);
 	}
 
-	@PatchMapping("/{id}")
-	public ResponseEntity<PracticeRoutineResponseDto> update(@PathVariable Long id, @Valid @RequestBody PracticeRoutineUpdateRequestDto req) {
-		return ResponseEntity.ok(practiceRoutineService.update(id, req));
+	@PostMapping("/update")
+	public ResponseEntity<PracticeRoutineResponseDto> update(@Valid @RequestBody PracticeRoutineUpdateRequestDto req) {
+		return ResponseEntity.ok(practiceRoutineService.update(req.getId(), req));
 	}
 
-	@GetMapping("/{id}")
-	public ResponseEntity<PracticeRoutineResponseDto> get(@PathVariable Long id) {
-		return ResponseEntity.ok(practiceRoutineService.getById(id));
+	@PostMapping("/detail")
+	public ResponseEntity<PracticeRoutineResponseDto> get(@Valid @RequestBody IdRequest req) {
+		return ResponseEntity.ok(practiceRoutineService.getById(req.getId()));
 	}
 
-	@GetMapping
+	@PostMapping("/list")
 	public ResponseEntity<List<PracticeRoutineResponseDto>> listMine() {
 		return ResponseEntity.ok(practiceRoutineService.listMine());
+	}
+
+	@PostMapping("/delete")
+	public ResponseEntity<Void> delete(@Valid @RequestBody IdRequest req) {
+		return practiceRoutineService.delete(req.getId())
+				? ResponseEntity.noContent().build()
+				: ResponseEntity.notFound().build();
 	}
 }

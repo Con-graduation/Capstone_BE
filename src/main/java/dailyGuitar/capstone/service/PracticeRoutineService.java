@@ -85,6 +85,15 @@ public class PracticeRoutineService {
 				.collect(Collectors.toList());
 	}
 
+	@Transactional
+	public boolean delete(Long id) {
+		Long userId = getCurrentUserId();
+		return practiceRoutineRepository.findById(id)
+				.filter(r -> r.getUserId().equals(userId))
+				.map(r -> { practiceRoutineRepository.delete(r); return true; })
+				.orElse(false);
+	}
+
 	private PracticeRoutineResponseDto toResponse(PracticeRoutine r) {
 		PracticeRoutineResponseDto dto = new PracticeRoutineResponseDto();
 		dto.setId(r.getId());
