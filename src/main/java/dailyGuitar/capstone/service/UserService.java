@@ -3,10 +3,8 @@ package dailyGuitar.capstone.service;
 import dailyGuitar.capstone.dto.UserRegistrationDto;
 import dailyGuitar.capstone.dto.UserResponseDto;
 import dailyGuitar.capstone.entity.User;
-import dailyGuitar.capstone.entity.UserProfile;
 import dailyGuitar.capstone.exception.UserAlreadyExistsException;
 import dailyGuitar.capstone.exception.UserNotFoundException;
-import dailyGuitar.capstone.repository.UserProfileRepository;
 import dailyGuitar.capstone.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -23,10 +21,8 @@ import java.util.Random;
 public class UserService {
 
     private final UserRepository userRepository;
-    private final UserProfileRepository userProfileRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
-
 
     public UserResponseDto registerUser(UserRegistrationDto registrationDto) {
         // 이메일로 임시 사용자 찾기
@@ -43,14 +39,15 @@ public class UserService {
             throw new UserAlreadyExistsException("이미 사용 중인 사용자명입니다.");
         }
 
-        // 닉네임 중복 확인
-        if (userProfileRepository.existsByDisplayName(registrationDto.getNickname())) {
+        // 닉네임 중복 확인 (User 도메인에서 관리)
+        if (userRepository.existsByNickname(registrationDto.getNickname())) {
             throw new UserAlreadyExistsException("이미 사용 중인 닉네임입니다.");
         }
 
         // 임시 사용자를 실제 사용자로 업데이트
         existingUser.setName(registrationDto.getName());
         existingUser.setUsername(registrationDto.getUsername());
+        existingUser.setNickname(registrationDto.getNickname());
         existingUser.setPassword(passwordEncoder.encode(registrationDto.getPassword()));
         existingUser.setEmailVerified(true);
         existingUser.setEmailVerifiedAt(LocalDateTime.now());
@@ -58,15 +55,6 @@ public class UserService {
         existingUser.setEmailVerificationExpiresAt(null);
 
         User savedUser = userRepository.save(existingUser);
-
-        // 기본 프로필 생성
-        UserProfile profile = UserProfile.builder()
-                .user(savedUser)
-                .displayName(registrationDto.getNickname())
-                .skillLevel(UserProfile.SkillLevel.BEGINNER)
-                .build();
-
-        userProfileRepository.save(profile);
 
         return UserResponseDto.from(savedUser);
     }
@@ -76,7 +64,7 @@ public class UserService {
     }
 
     public boolean isNicknameAvailable(String nickname) {
-        return !userProfileRepository.existsByDisplayName(nickname);
+        return !userRepository.existsByNickname(nickname);
     }
 
     public boolean isEmailAvailable(String email) {
@@ -135,6 +123,7 @@ public class UserService {
         User tempUser = User.builder()
                 .email(email)
                 .name("TEMP") // 임시값
+                .nickname("TEMP") // 임시값
                 .username("TEMP_" + System.currentTimeMillis()) // 임시값
                 .password("TEMP") // 임시값
                 .emailVerified(false)

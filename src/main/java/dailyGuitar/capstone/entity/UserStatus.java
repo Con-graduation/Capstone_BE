@@ -15,6 +15,9 @@ public class UserStatus {
 	private User user;
 
 	@Column(nullable = false)
+	private Integer level = 1; // 사용자 레벨
+
+	@Column(nullable = false)
 	private Long totalPracticeCount = 0L; // 총 연습 횟수
 
 	@Column(nullable = false)
@@ -43,6 +46,7 @@ public class UserStatus {
 
 	public Long getId() { return id; }
 	public User getUser() { return user; }
+	public Integer getLevel() { return level; }
 	public Long getTotalPracticeCount() { return totalPracticeCount; }
 	public Long getTotalPracticeSeconds() { return totalPracticeSeconds; }
 	public Integer getStreakDays() { return streakDays; }
@@ -53,6 +57,7 @@ public class UserStatus {
 	public Instant getUpdatedAt() { return updatedAt; }
 
 	public void setUser(User user) { this.user = user; }
+	public void setLevel(Integer level) { this.level = level; }
 	public void setTotalPracticeCount(Long totalPracticeCount) { this.totalPracticeCount = totalPracticeCount; }
 	public void setTotalPracticeSeconds(Long totalPracticeSeconds) { this.totalPracticeSeconds = totalPracticeSeconds; }
 	public void setStreakDays(Integer streakDays) { this.streakDays = streakDays; }
