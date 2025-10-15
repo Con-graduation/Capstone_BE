@@ -1,0 +1,65 @@
+### 회원가입
+POST http://localhost:8080/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "username": "testuser",
+  "password": "password123",
+  "birthDate": "1990-01-01",
+  "phone": "010-1234-5678"
+}
+
+### 로그인
+POST http://localhost:8080/api/auth/login
+Content-Type: application/json
+
+{
+  "usernameOrEmail": "test@example.com",
+  "password": "password123"
+}
+
+### 모든 코드 조회 (비회원 접근 가능)
+GET http://localhost:8080/api/chords/all
+
+### 코드 검색 (비회원 접근 가능)
+GET http://localhost:8080/api/chords/search?q=C
+
+### 메트로놈 프리셋 조회 (비회원 접근 가능)
+GET http://localhost:8080/api/tools/metronome/presets
+
+### 튜너 프리셋 조회 (비회원 접근 가능)
+GET http://localhost:8080/api/tools/tuner/presets
+
+### 연습 세션 생성 (인증 필요)
+POST http://localhost:8080/api/sessions
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "sessionName": "첫 번째 연습",
+  "sessionType": "FREESTYLE",
+  "targetBpm": 120
+}
+
+### 연습 세션 목록 조회 (인증 필요)
+GET http://localhost:8080/api/sessions
+Authorization: Bearer {{token}}
+
+### 연습 세션 시작 (인증 필요)
+POST http://localhost:8080/api/sessions/1/start
+Authorization: Bearer {{token}}
+
+### 연습 세션 완료 (인증 필요)
+POST http://localhost:8080/api/sessions/1/complete?actualBpm=118&accuracyScore=85.5&timingScore=82.3&pitchScore=88.1&overallScore=85.3&durationSeconds=300
+Authorization: Bearer {{token}}
+
+### H2 데이터베이스 콘솔 (개발용)
+GET http://localhost:8080/h2-console
+
+### Swagger UI (API 문서)
+GET http://localhost:8080/swagger-ui.html
+
+### API 문서 (JSON)
+GET http://localhost:8080/api-docs
+
