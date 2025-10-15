@@ -38,6 +38,11 @@ public class User implements UserDetails {
     @Column(nullable = false)
     private String name;
 
+    // 닉네임 (표시 이름), 고유
+    @NotBlank
+    @Column(unique = true, nullable = false, length = 50)
+    private String nickname;
+
     @NotBlank
     @Column(nullable = false)
     private String password;

@@ -39,9 +39,15 @@ public class UserService {
             throw new UserAlreadyExistsException("이미 사용 중인 사용자명입니다.");
         }
 
+        // 닉네임 중복 확인 (User 도메인에서 관리)
+        if (userRepository.existsByNickname(registrationDto.getNickname())) {
+            throw new UserAlreadyExistsException("이미 사용 중인 닉네임입니다.");
+        }
+
         // 임시 사용자를 실제 사용자로 업데이트
         existingUser.setName(registrationDto.getName());
         existingUser.setUsername(registrationDto.getUsername());
+        existingUser.setNickname(registrationDto.getNickname());
         existingUser.setPassword(passwordEncoder.encode(registrationDto.getPassword()));
         existingUser.setEmailVerified(true);
         existingUser.setEmailVerifiedAt(LocalDateTime.now());
@@ -58,8 +64,7 @@ public class UserService {
     }
 
     public boolean isNicknameAvailable(String nickname) {
-        // UserProfile 제거: 닉네임 중복 체크는 보류 또는 다른 정책으로 대체
-        return true;
+        return !userRepository.existsByNickname(nickname);
     }
 
     public boolean isEmailAvailable(String email) {
@@ -118,6 +123,7 @@ public class UserService {
         User tempUser = User.builder()
                 .email(email)
                 .name("TEMP") // 임시값
+                .nickname("TEMP") // 임시값
                 .username("TEMP_" + System.currentTimeMillis()) // 임시값
                 .password("TEMP") // 임시값
                 .emailVerified(false)
