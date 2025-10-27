@@ -28,7 +28,7 @@ public class PracticeRoutine {
 	@Column(nullable = false)
 	private Long userId;
 
-	@Column(nullable = false, length = 100)
+	@Column(name = "routine_name", nullable = false, length = 100)
 	private String title; // 루틴 이름
 
 	@Enumerated(EnumType.STRING)
