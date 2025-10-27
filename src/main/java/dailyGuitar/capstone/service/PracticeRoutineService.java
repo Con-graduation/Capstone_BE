@@ -1,11 +1,15 @@
 package dailyGuitar.capstone.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dailyGuitar.capstone.dto.practice.PracticeRoutineCreateRequestDto;
 import dailyGuitar.capstone.dto.practice.PracticeRoutineResponseDto;
 import dailyGuitar.capstone.dto.practice.PracticeRoutineUpdateRequestDto;
 import dailyGuitar.capstone.entity.PracticeRoutine;
+import dailyGuitar.capstone.entity.PracticeSession;
 import dailyGuitar.capstone.entity.User;
 import dailyGuitar.capstone.repository.PracticeRoutineRepository;
+import dailyGuitar.capstone.repository.PracticeSessionRepository;
 import dailyGuitar.capstone.repository.UserRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -27,14 +31,19 @@ public class PracticeRoutineService {
 	private final PracticeRoutineRepository practiceRoutineRepository;
 	private final UserRepository userRepository;
 	private final AudioAnalysisService audioAnalysisService;
+	private final PracticeSessionRepository practiceSessionRepository;
+	private final ObjectMapper objectMapper;
 
 	public PracticeRoutineService(
 			PracticeRoutineRepository practiceRoutineRepository, 
 			UserRepository userRepository,
-			AudioAnalysisService audioAnalysisService) {
+			AudioAnalysisService audioAnalysisService,
+			PracticeSessionRepository practiceSessionRepository) {
 		this.practiceRoutineRepository = practiceRoutineRepository;
 		this.userRepository = userRepository;
 		this.audioAnalysisService = audioAnalysisService;
+		this.practiceSessionRepository = practiceSessionRepository;
+		this.objectMapper = new ObjectMapper();
 	}
 
 	private Long getCurrentUserId() {
@@ -144,9 +153,9 @@ public class PracticeRoutineService {
 				throw new RuntimeException("Failed to analyze audio", e);
 			}
 			
-			// TODO: 분석 결과 파싱 및 저장 (다음 커밋)
-			// 여기서는 로깅만 수행
-			System.out.println("AI Analysis Result: " + analysisResult);
+			// 분석 결과 파싱 및 PracticeSession 저장
+			PracticeSession session = parseAnalysisResult(analysisResult, userId, routineId);
+			practiceSessionRepository.save(session);
 			
 			// 연습 횟수 증가 및 마지막 연습 시간 업데이트
 			routine.setPracticeCount(routine.getPracticeCount() + 1);
@@ -157,6 +166,62 @@ public class PracticeRoutineService {
 			// 임시 파일 삭제
 			deleteTemporaryFile(tempFile);
 		}
+	}
+	
+	/**
+	 * AI 분석 결과를 파싱하여 PracticeSession 엔티티를 생성합니다.
+	 */
+	private PracticeSession parseAnalysisResult(String analysisResult, Long userId, Long routineId) {
+		try {
+			JsonNode jsonNode = objectMapper.readTree(analysisResult);
+			
+			// 필수 필드 추출
+			int rhythmAccuracy = jsonNode.get("rhythm_accuracy").asInt();
+			int pitchAccuracy = jsonNode.get("pitch_accuracy").asInt();
+			
+			// 섹션별 점수 추출
+			String rhythmSectionScores = objectMapper.writeValueAsString(jsonNode.get("rhythm_sections"));
+			String pitchSectionScores = objectMapper.writeValueAsString(jsonNode.get("pitch_sections"));
+			
+			// 가장 점수가 낮은 섹션 추출
+			PracticeSession.Section worstRhythmSection = extractWorstSection(jsonNode.get("rhythm_sections"));
+			PracticeSession.Section worstPitchSection = extractWorstSection(jsonNode.get("pitch_sections"));
+			
+			// PracticeSession 생성
+			PracticeSession session = new PracticeSession();
+			session.setUserId(userId);
+			session.setRoutineId(routineId);
+			session.setRhythmAccuracy(rhythmAccuracy);
+			session.setPitchAccuracy(pitchAccuracy);
+			session.setRhythmSectionScores(rhythmSectionScores);
+			session.setPitchSectionScores(pitchSectionScores);
+			session.setWorstRhythmSection(worstRhythmSection);
+			session.setWorstPitchSection(worstPitchSection);
+			
+			return session;
+		} catch (Exception e) {
+			throw new RuntimeException("Failed to parse analysis result: " + analysisResult, e);
+		}
+	}
+	
+	/**
+	 * 섹션별 점수에서 가장 낮은 점수의 섹션을 찾습니다.
+	 */
+	private PracticeSession.Section extractWorstSection(JsonNode sections) {
+		int minScore = Integer.MAX_VALUE;
+		String worstSection = "EARLY"; // 기본값
+		
+		for (String section : new String[]{"early", "middle", "late"}) {
+			if (sections.has(section)) {
+				int score = sections.get(section).asInt();
+				if (score < minScore) {
+					minScore = score;
+					worstSection = section.toUpperCase();
+				}
+			}
+		}
+		
+		return PracticeSession.Section.valueOf(worstSection);
 	}
 	
 	/**
