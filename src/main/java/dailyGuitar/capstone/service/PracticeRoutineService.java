@@ -5,12 +5,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dailyGuitar.capstone.dto.practice.PracticeRoutineCreateRequestDto;
 import dailyGuitar.capstone.dto.practice.PracticeRoutineResponseDto;
 import dailyGuitar.capstone.dto.practice.PracticeRoutineUpdateRequestDto;
+import dailyGuitar.capstone.dto.practice.PracticeReportResponseDto;
 import dailyGuitar.capstone.entity.PracticeRoutine;
 import dailyGuitar.capstone.entity.PracticeSession;
 import dailyGuitar.capstone.entity.User;
+import dailyGuitar.capstone.entity.UserStatus;
 import dailyGuitar.capstone.repository.PracticeRoutineRepository;
 import dailyGuitar.capstone.repository.PracticeSessionRepository;
 import dailyGuitar.capstone.repository.UserRepository;
+import dailyGuitar.capstone.repository.UserStatusRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -32,17 +35,20 @@ public class PracticeRoutineService {
 	private final UserRepository userRepository;
 	private final AudioAnalysisService audioAnalysisService;
 	private final PracticeSessionRepository practiceSessionRepository;
+	private final UserStatusRepository userStatusRepository;
 	private final ObjectMapper objectMapper;
 
 	public PracticeRoutineService(
 			PracticeRoutineRepository practiceRoutineRepository, 
 			UserRepository userRepository,
 			AudioAnalysisService audioAnalysisService,
-			PracticeSessionRepository practiceSessionRepository) {
+			PracticeSessionRepository practiceSessionRepository,
+			UserStatusRepository userStatusRepository) {
 		this.practiceRoutineRepository = practiceRoutineRepository;
 		this.userRepository = userRepository;
 		this.audioAnalysisService = audioAnalysisService;
 		this.practiceSessionRepository = practiceSessionRepository;
+		this.userStatusRepository = userStatusRepository;
 		this.objectMapper = new ObjectMapper();
 	}
 
@@ -115,7 +121,7 @@ public class PracticeRoutineService {
 	}
 
 	@Transactional
-	public void complete(Long routineId, MultipartFile audioFile) {
+	public PracticeReportResponseDto complete(Long routineId, MultipartFile audioFile) {
 		Long userId = getCurrentUserId();
 		
 		// 루틴 조회 및 권한 확인
@@ -161,6 +167,12 @@ public class PracticeRoutineService {
 			routine.setPracticeCount(routine.getPracticeCount() + 1);
 			routine.setLastPracticedAt(Instant.now());
 			practiceRoutineRepository.save(routine);
+			
+			// UserStatus 업데이트
+			updateUserStatus(userId, routine, session);
+			
+			// 보고서 생성 및 반환
+			return generatePracticeReport(session, routine);
 			
 		} finally {
 			// 임시 파일 삭제
@@ -261,5 +273,105 @@ public class PracticeRoutineService {
 		dto.setUpdatedAt(r.getUpdatedAt());
 		dto.setLastPracticedAt(r.getLastPracticedAt());
 		return dto;
+	}
+	
+	/**
+	 * UserStatus를 업데이트합니다.
+	 */
+	private void updateUserStatus(Long userId, PracticeRoutine routine, PracticeSession session) {
+		User user = userRepository.findById(userId)
+				.orElseThrow(() -> new NoSuchElementException("User not found"));
+		
+		userStatusRepository.findByUser(user).ifPresentOrElse(
+				status -> {
+					// 기존 UserStatus 업데이트
+					status.setTotalPracticeCount(status.getTotalPracticeCount() + 1);
+					// TODO: totalPracticeSeconds는 루틴 정보에서 계산
+					
+					// 전체 정확도 계산 (박자 + 음정 평균)
+					int overallAccuracy = (session.getRhythmAccuracy() + session.getPitchAccuracy()) / 2;
+					
+					// 평균 정확도 업데이트 (전체 평균 재계산 필요 - 간단화)
+					status.setOverallAccuracy(overallAccuracy);
+					
+					// 최고 정확도 업데이트
+					if (overallAccuracy > status.getMaxAccuracy()) {
+						status.setMaxAccuracy(overallAccuracy);
+					}
+					
+					// 경험치 추가
+					status.setTotalExperience(status.getTotalExperience() + routine.getXpPerRun());
+					
+					// TODO: 레벨업 계산 및 streak 계산
+					
+					userStatusRepository.save(status);
+				},
+				() -> {
+					// UserStatus가 없으면 생성
+					UserStatus status = new UserStatus();
+					status.setUser(user);
+					status.setTotalPracticeCount(1L);
+					int overallAccuracy = (session.getRhythmAccuracy() + session.getPitchAccuracy()) / 2;
+					status.setOverallAccuracy(overallAccuracy);
+					status.setMaxAccuracy(overallAccuracy);
+					status.setTotalExperience((long) routine.getXpPerRun());
+					userStatusRepository.save(status);
+				}
+		);
+	}
+	
+	/**
+	 * 연습 보고서를 생성합니다.
+	 */
+	private PracticeReportResponseDto generatePracticeReport(PracticeSession session, PracticeRoutine routine) {
+		PracticeReportResponseDto report = new PracticeReportResponseDto();
+		
+		// 박자 정확도 정보
+		report.setRhythmAccuracy(session.getRhythmAccuracy());
+		report.setRhythmFeedback(generateAccuracyFeedback(session.getRhythmAccuracy()));
+		report.setRhythmWorstSection(getWorstSectionMessage(session.getWorstRhythmSection()));
+		
+		// 음정 정확도 정보
+		report.setPitchAccuracy(session.getPitchAccuracy());
+		report.setPitchFeedback(generateAccuracyFeedback(session.getPitchAccuracy()));
+		report.setPitchWorstSection(getWorstSectionMessage(session.getWorstPitchSection()));
+		
+		// TODO: 이전 연습과 비교, BPM 조언 등
+		
+		// 종합 피드백
+		report.setOverallFeedback("이번 연습도 정말 잘했습니다!");
+		
+		return report;
+	}
+	
+	/**
+	 * 정확도에 따른 피드백을 생성합니다.
+	 */
+	private String generateAccuracyFeedback(int accuracy) {
+		if (accuracy >= 90) {
+			return "거의 완벽한 수준이에요!";
+		} else if (accuracy >= 70) {
+			return "잘 연주하고 있어요!";
+		} else if (accuracy >= 50) {
+			return "조금 더 연습하면 나아질 거예요!";
+		} else {
+			return "꾸준한 연습이 필요해요!";
+		}
+	}
+	
+	/**
+	 * 섹션 정보를 메시지로 변환합니다.
+	 */
+	private String getWorstSectionMessage(PracticeSession.Section section) {
+		switch (section) {
+			case EARLY:
+				return "초반에서 연주가 가장 불안정했어요";
+			case MIDDLE:
+				return "중반에서 연주가 가장 불안정했어요";
+			case LATE:
+				return "후반에서 연주가 가장 불안정했어요";
+			default:
+				return "전체적으로 안정적인 연주였어요";
+		}
 	}
 }
