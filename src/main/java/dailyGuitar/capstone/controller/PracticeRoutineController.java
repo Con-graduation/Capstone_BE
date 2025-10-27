@@ -10,8 +10,11 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URI;
 import java.util.List;
@@ -87,5 +90,20 @@ public class PracticeRoutineController {
 		return practiceRoutineService.delete(id)
 				? ResponseEntity.noContent().build()
 				: ResponseEntity.notFound().build();
+	}
+
+	@Operation(summary = "연습 완료", description = "녹음된 WAV 파일과 루틴 정보를 받아 연습을 완료 처리합니다.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "완료 성공"),
+			@ApiResponse(responseCode = "404", description = "루틴 없음"),
+			@ApiResponse(responseCode = "401", description = "인증 필요"),
+			@ApiResponse(responseCode = "400", description = "잘못된 요청")
+	})
+	@PostMapping(value = "/complete", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+	public ResponseEntity<Void> complete(
+			@RequestParam @NotNull Long routineId,
+			@RequestParam @NotNull MultipartFile audioFile) {
+		practiceRoutineService.complete(routineId, audioFile);
+		return ResponseEntity.ok().build();
 	}
 }

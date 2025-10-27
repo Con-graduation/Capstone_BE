@@ -11,7 +11,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
@@ -92,6 +94,42 @@ public class PracticeRoutineService {
 				.filter(r -> r.getUserId().equals(userId))
 				.map(r -> { practiceRoutineRepository.delete(r); return true; })
 				.orElse(false);
+	}
+
+	@Transactional
+	public void complete(Long routineId, MultipartFile audioFile) {
+		Long userId = getCurrentUserId();
+		
+		// 루틴 조회 및 권한 확인
+		PracticeRoutine routine = practiceRoutineRepository.findById(routineId)
+				.orElseThrow(() -> new NoSuchElementException("Routine not found: " + routineId));
+		
+		if (!routine.getUserId().equals(userId)) {
+			throw new SecurityException("Not owner of routine");
+		}
+		
+		// 파일 검증
+		if (audioFile.isEmpty()) {
+			throw new IllegalArgumentException("Audio file is empty");
+		}
+		
+		String contentType = audioFile.getContentType();
+		if (contentType == null || !contentType.equals("audio/wav")) {
+			throw new IllegalArgumentException("Only WAV files are allowed. Received: " + contentType);
+		}
+		
+		// 여기서 나중에 AI 분석 로직 추가 예정
+		// 현재는 파일을 받아서 저장/처리하는 기본 구조만 구현
+		
+		// TODO: AI 분석 서비스로 파일 전달
+		// aiAnalysisService.analyze(audioFile);
+		
+		// 연습 횟수 증가 및 마지막 연습 시간 업데이트
+		routine.setPracticeCount(routine.getPracticeCount() + 1);
+		routine.setLastPracticedAt(Instant.now());
+		practiceRoutineRepository.save(routine);
+		
+		// TODO: S3에 파일 저장하거나 AI 분석 결과 처리
 	}
 
 	private PracticeRoutineResponseDto toResponse(PracticeRoutine r) {
