@@ -1,10 +1,11 @@
 package dailyGuitar.capstone.controller;
 
+import dailyGuitar.capstone.dto.ConfirmUploadRequestDto;
+import dailyGuitar.capstone.dto.UploadUrlRequestDto;
 import dailyGuitar.capstone.service.PresignedUrlService;
 import dailyGuitar.capstone.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -25,11 +26,8 @@ public class ProfileImageController {
 
 	@Operation(summary = "프로필 이미지 업로드 URL 발급", description = "contentType과 filename을 받아 S3 PUT presigned URL을 반환합니다.")
 	@PostMapping("/upload-url")
-	public ResponseEntity<Map<String, String>> createUploadUrl(
-			@RequestParam @NotBlank @Schema(example = "image/png") String contentType,
-			@RequestParam @NotBlank @Schema(example = "avatar.png") String filename
-	) {
-		PresignedUrlService.Result result = presignedUrlService.createUploadUrl(contentType, filename);
+	public ResponseEntity<Map<String, String>> createUploadUrl(@Valid @RequestBody UploadUrlRequestDto request) {
+		PresignedUrlService.Result result = presignedUrlService.createUploadUrl(request.getContentType(), request.getFilename());
 		return ResponseEntity.ok(Map.of(
 				"uploadUrl", result.uploadUrl(),
 				"objectKey", result.objectKey()
@@ -38,9 +36,9 @@ public class ProfileImageController {
 
 	@Operation(summary = "업로드 완료 확인", description = "프론트가 업로드 완료 후 objectKey를 보내면 사용자 프로필에 저장합니다.")
 	@PostMapping("/confirm")
-	public ResponseEntity<Void> confirmUpload(@RequestParam @NotBlank String objectKey) {
+	public ResponseEntity<Void> confirmUpload(@Valid @RequestBody ConfirmUploadRequestDto request) {
 		Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-		userService.updateProfileImageObjectKey(auth.getName(), objectKey);
+		userService.updateProfileImageObjectKey(auth.getName(), request.getObjectKey());
 		return ResponseEntity.noContent().build();
 	}
 
