@@ -43,6 +43,10 @@ public class User implements UserDetails {
     @Column(unique = true, nullable = false, length = 50)
     private String nickname;
 
+    // S3 object key for profile image
+    @Column(length = 255)
+    private String profileImageObjectKey;
+
     @NotBlank
     @Column(nullable = false)
     private String password;

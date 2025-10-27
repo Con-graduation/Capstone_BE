@@ -140,6 +140,20 @@ public class UserService {
         emailService.send(email, subject, body);
     }
 
+    public void updateProfileImageObjectKey(String username, String objectKey) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new UserNotFoundException("사용자를 찾을 수 없습니다: " + username));
+        user.setProfileImageObjectKey(objectKey);
+        userRepository.save(user);
+    }
+
+    @Transactional(readOnly = true)
+    public String getProfileImageObjectKey(String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new UserNotFoundException("사용자를 찾을 수 없습니다: " + username));
+        return user.getProfileImageObjectKey();
+    }
+
     @Transactional(readOnly = true)
     public UserResponseDto getUserById(Long id) {
         User user = userRepository.findById(id)

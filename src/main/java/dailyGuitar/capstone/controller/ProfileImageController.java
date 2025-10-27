@@ -43,4 +43,19 @@ public class ProfileImageController {
 		userService.updateProfileImageObjectKey(auth.getName(), objectKey);
 		return ResponseEntity.noContent().build();
 	}
+
+	@Operation(summary = "프로필 이미지 다운로드 URL 발급", description = "현재 로그인한 사용자의 프로필 이미지 다운로드용 presigned URL을 반환합니다.")
+	@GetMapping("/download-url")
+	public ResponseEntity<Map<String, String>> getDownloadUrl() {
+		Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+		String username = auth.getName();
+		
+		String objectKey = userService.getProfileImageObjectKey(username);
+		if (objectKey == null || objectKey.isEmpty()) {
+			return ResponseEntity.notFound().build();
+		}
+		
+		String downloadUrl = presignedUrlService.createDownloadUrl(objectKey);
+		return ResponseEntity.ok(Map.of("downloadUrl", downloadUrl));
+	}
 }

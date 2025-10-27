@@ -4,7 +4,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 import java.net.URL;
 import java.time.Duration;
@@ -47,6 +49,21 @@ public class PresignedUrlService {
 		if (filename == null) return "";
 		int idx = filename.lastIndexOf('.');
 		return (idx >= 0 && idx + 1 < filename.length()) ? filename.substring(idx + 1) : "";
+	}
+
+	public String createDownloadUrl(String objectKey) {
+		GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+				.bucket(bucket)
+				.key(objectKey)
+				.build();
+
+		GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+				.signatureDuration(Duration.ofHours(1)) // 다운로드는 1시간 유효
+				.getObjectRequest(getObjectRequest)
+				.build();
+
+		URL url = presigner.presignGetObject(presignRequest).url();
+		return url.toString();
 	}
 
 	public record Result(String uploadUrl, String objectKey) { }
