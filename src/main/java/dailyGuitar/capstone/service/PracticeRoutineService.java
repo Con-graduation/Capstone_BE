@@ -13,19 +13,28 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
 public class PracticeRoutineService {
 	private final PracticeRoutineRepository practiceRoutineRepository;
 	private final UserRepository userRepository;
+	private final AudioAnalysisService audioAnalysisService;
 
-	public PracticeRoutineService(PracticeRoutineRepository practiceRoutineRepository, UserRepository userRepository) {
+	public PracticeRoutineService(
+			PracticeRoutineRepository practiceRoutineRepository, 
+			UserRepository userRepository,
+			AudioAnalysisService audioAnalysisService) {
 		this.practiceRoutineRepository = practiceRoutineRepository;
 		this.userRepository = userRepository;
+		this.audioAnalysisService = audioAnalysisService;
 	}
 
 	private Long getCurrentUserId() {
@@ -118,18 +127,59 @@ public class PracticeRoutineService {
 			throw new IllegalArgumentException("Only WAV files are allowed. Received: " + contentType);
 		}
 		
-		// 여기서 나중에 AI 분석 로직 추가 예정
-		// 현재는 파일을 받아서 저장/처리하는 기본 구조만 구현
+		// WAV 파일을 임시 디렉토리에 저장
+		Path tempFile;
+		try {
+			tempFile = saveTemporaryFile(audioFile);
+		} catch (IOException e) {
+			throw new RuntimeException("Failed to save temporary file", e);
+		}
 		
-		// TODO: AI 분석 서비스로 파일 전달
-		// aiAnalysisService.analyze(audioFile);
-		
-		// 연습 횟수 증가 및 마지막 연습 시간 업데이트
-		routine.setPracticeCount(routine.getPracticeCount() + 1);
-		routine.setLastPracticedAt(Instant.now());
-		practiceRoutineRepository.save(routine);
-		
-		// TODO: S3에 파일 저장하거나 AI 분석 결과 처리
+		try {
+			// AI 분석 서비스로 파일 경로 전달
+			String analysisResult;
+			try {
+				analysisResult = audioAnalysisService.analyzeAudio(tempFile.toString());
+			} catch (IOException | InterruptedException e) {
+				throw new RuntimeException("Failed to analyze audio", e);
+			}
+			
+			// TODO: 분석 결과 파싱 및 저장 (다음 커밋)
+			// 여기서는 로깅만 수행
+			System.out.println("AI Analysis Result: " + analysisResult);
+			
+			// 연습 횟수 증가 및 마지막 연습 시간 업데이트
+			routine.setPracticeCount(routine.getPracticeCount() + 1);
+			routine.setLastPracticedAt(Instant.now());
+			practiceRoutineRepository.save(routine);
+			
+		} finally {
+			// 임시 파일 삭제
+			deleteTemporaryFile(tempFile);
+		}
+	}
+	
+	/**
+	 * MultipartFile을 임시 디렉토리에 저장합니다.
+	 */
+	private Path saveTemporaryFile(MultipartFile file) throws IOException {
+		Path tempDir = Files.createTempDirectory("guitar-practice-");
+		Path tempFile = tempDir.resolve(UUID.randomUUID().toString() + ".wav");
+		Files.copy(file.getInputStream(), tempFile);
+		return tempFile;
+	}
+	
+	/**
+	 * 임시 파일을 삭제합니다.
+	 */
+	private void deleteTemporaryFile(Path tempFile) {
+		try {
+			Files.deleteIfExists(tempFile);
+			// 임시 디렉토리도 삭제 시도
+			Files.deleteIfExists(tempFile.getParent());
+		} catch (IOException e) {
+			System.err.println("Failed to delete temporary file: " + tempFile);
+		}
 	}
 
 	private PracticeRoutineResponseDto toResponse(PracticeRoutine r) {
