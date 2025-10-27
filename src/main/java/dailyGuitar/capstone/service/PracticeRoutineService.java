@@ -24,8 +24,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -286,13 +289,21 @@ public class PracticeRoutineService {
 				status -> {
 					// 기존 UserStatus 업데이트
 					status.setTotalPracticeCount(status.getTotalPracticeCount() + 1);
-					// TODO: totalPracticeSeconds는 루틴 정보에서 계산
 					
 					// 전체 정확도 계산 (박자 + 음정 평균)
 					int overallAccuracy = (session.getRhythmAccuracy() + session.getPitchAccuracy()) / 2;
 					
-					// 평균 정확도 업데이트 (전체 평균 재계산 필요 - 간단화)
-					status.setOverallAccuracy(overallAccuracy);
+					// 전체 평균 정확도 재계산
+					List<PracticeSession> allSessions = practiceSessionRepository.findByUserIdOrderByCreatedAtDesc(userId);
+					if (!allSessions.isEmpty()) {
+						double avgAccuracy = allSessions.stream()
+								.mapToInt(s -> (s.getRhythmAccuracy() + s.getPitchAccuracy()) / 2)
+								.average()
+								.orElse(0.0);
+						status.setOverallAccuracy((int) Math.round(avgAccuracy));
+					} else {
+						status.setOverallAccuracy(overallAccuracy);
+					}
 					
 					// 최고 정확도 업데이트
 					if (overallAccuracy > status.getMaxAccuracy()) {
@@ -300,9 +311,15 @@ public class PracticeRoutineService {
 					}
 					
 					// 경험치 추가
-					status.setTotalExperience(status.getTotalExperience() + routine.getXpPerRun());
+					long newExperience = status.getTotalExperience() + routine.getXpPerRun();
+					status.setTotalExperience(newExperience);
 					
-					// TODO: 레벨업 계산 및 streak 계산
+					// 레벨 계산 (경험치를 기반으로)
+					int newLevel = calculateLevel(newExperience);
+					status.setLevel(newLevel);
+					
+					// Streak 계산
+					updateStreak(status, session);
 					
 					userStatusRepository.save(status);
 				},
@@ -374,4 +391,36 @@ public class PracticeRoutineService {
 				return "전체적으로 안정적인 연주였어요";
 		}
 	}
+
+	/**
+ * 경험치를 기반으로 레벨을 계산합니다.
+ */
+private int calculateLevel(long experience) {
+    return (int) Math.floor(Math.sqrt(experience / 50.0)) + 1;
+}
+
+/**
+ * Streak을 업데이트합니다.
+ */
+private void updateStreak(UserStatus status, PracticeSession session) {
+    String today = Instant.now().atZone(ZoneId.of("Asia/Seoul"))
+            .format(DateTimeFormatter.ISO_LOCAL_DATE);
+    
+    Optional<PracticeSession> lastSession = practiceSessionRepository
+            .findByUserIdOrderByCreatedAtDesc(status.getUser().getId())
+            .stream()
+            .skip(1)
+            .findFirst();
+    
+    if (lastSession.isPresent()) {
+        String lastDate = lastSession.get().getCreatedAt().atZone(ZoneId.of("Asia/Seoul"))
+                .format(DateTimeFormatter.ISO_LOCAL_DATE);
+        
+        if (!today.equals(lastDate)) {
+            status.setStreakDays(status.getStreakDays() + 1);
+        }
+    } else {
+        status.setStreakDays(1);
+    }
+}
 }
