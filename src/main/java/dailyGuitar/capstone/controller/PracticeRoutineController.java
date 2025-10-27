@@ -3,6 +3,7 @@ package dailyGuitar.capstone.controller;
 import dailyGuitar.capstone.dto.practice.PracticeRoutineCreateRequestDto;
 import dailyGuitar.capstone.dto.practice.PracticeRoutineResponseDto;
 import dailyGuitar.capstone.dto.practice.PracticeRoutineUpdateRequestDto;
+import dailyGuitar.capstone.dto.practice.PracticeReportResponseDto;
 import dailyGuitar.capstone.service.PracticeRoutineService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -100,10 +101,10 @@ public class PracticeRoutineController {
 			@ApiResponse(responseCode = "400", description = "잘못된 요청")
 	})
 	@PostMapping(value = "/complete", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-	public ResponseEntity<Void> complete(
+	public ResponseEntity<PracticeReportResponseDto> complete(
 			@RequestParam @NotNull Long routineId,
 			@RequestParam @NotNull MultipartFile audioFile) {
-		practiceRoutineService.complete(routineId, audioFile);
-		return ResponseEntity.ok().build();
+		PracticeReportResponseDto report = practiceRoutineService.complete(routineId, audioFile);
+		return ResponseEntity.ok(report);
 	}
 }
