@@ -7,6 +7,7 @@ import dailyGuitar.capstone.dto.practice.PracticeReportResponseDto;
 import dailyGuitar.capstone.service.PracticeRoutineService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -95,7 +96,10 @@ public class PracticeRoutineController {
 
 	@Operation(summary = "연습 완료", description = "녹음된 WAV 파일과 루틴 정보를 받아 연습을 완료 처리합니다.")
 	@ApiResponses({
-			@ApiResponse(responseCode = "200", description = "완료 성공"),
+            @ApiResponse(responseCode = "200", description = "완료 성공",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = PracticeReportResponseDto.class),
+                            examples = @ExampleObject(value = "{\n  \"rhythmAccuracy\": 92,\n  \"rhythmFeedback\": \"안정적인 템포를 유지했어요. 후반에 약간 흔들림이 있었어요.\",\n  \"rhythmHistory\": [\n    { \"accuracy\": 85, \"practicedAt\": \"2025-10-20T21:03:00Z\" },\n    { \"accuracy\": 88, \"practicedAt\": \"2025-10-22T20:55:00Z\" }\n  ],\n  \"rhythmComparison\": \"직전 연습보다 5% 향상\",\n  \"rhythmWorstSection\": \"초반에서 연주가 가장 불안정했어요\",\n  \"rhythmBpmAdvice\": \"다음 연습은 BPM을 95로 낮춰보세요\",\n  \"pitchAccuracy\": 88,\n  \"pitchFeedback\": \"코드 전환 시 일부 음정이 낮게 들립니다. 손가락 각도를 조정해 보세요.\",\n  \"pitchHistory\": [\n    { \"accuracy\": 80, \"practicedAt\": \"2025-10-20T21:03:00Z\" },\n    { \"accuracy\": 85, \"practicedAt\": \"2025-10-22T20:55:00Z\" }\n  ],\n  \"pitchComparison\": \"직전 연습보다 3% 향상\",\n  \"pitchWorstSection\": \"중반의 코드 전환 구간에서 음정 편차가 컸어요\",\n  \"pitchDifficultyAdvice\": \"A–D 전환이 특히 어렵습니다. 왼손 포지션 연습을 추천해요.\",\n  \"overallFeedback\": \"리듬은 안정적이지만 일부 코드 전환에서 잡음이 발생했어요. 다음 연습에서 느린 템포로 전환 구간을 집중하세요.\"\n}"))),
 			@ApiResponse(responseCode = "404", description = "루틴 없음"),
 			@ApiResponse(responseCode = "401", description = "인증 필요"),
 			@ApiResponse(responseCode = "400", description = "잘못된 요청")
