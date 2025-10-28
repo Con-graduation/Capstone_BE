@@ -196,6 +196,7 @@ public class PracticeRoutineService {
         session.setPitchSectionScores("{\"early\":80,\"middle\":86,\"late\":88}");
         session.setWorstRhythmSection(PracticeSession.Section.EARLY);
         session.setWorstPitchSection(PracticeSession.Section.MIDDLE);
+        session.setSessionName("Practice Session " + Instant.now().toString());
 
         practiceSessionRepository.save(session);
 

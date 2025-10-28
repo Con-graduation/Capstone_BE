@@ -42,6 +42,10 @@ public class PracticeSession {
 	@Enumerated(EnumType.STRING)
 	@Column(length = 10)
 	private Section worstPitchSection;
+
+	// 세션 구분용 이름 (필수 아님)
+	@Column(name = "session_name", nullable = true, length = 100)
+	private String sessionName;
 	
 	@Column(nullable = false, updatable = false)
 	private Instant createdAt;
@@ -66,6 +70,7 @@ public class PracticeSession {
 	public Section getWorstRhythmSection() { return worstRhythmSection; }
 	public Section getWorstPitchSection() { return worstPitchSection; }
 	public Instant getCreatedAt() { return createdAt; }
+	public String getSessionName() { return sessionName; }
 	
 	// Setters
 	public void setUserId(Long userId) { this.userId = userId; }
@@ -76,4 +81,5 @@ public class PracticeSession {
 	public void setPitchSectionScores(String pitchSectionScores) { this.pitchSectionScores = pitchSectionScores; }
 	public void setWorstRhythmSection(Section worstRhythmSection) { this.worstRhythmSection = worstRhythmSection; }
 	public void setWorstPitchSection(Section worstPitchSection) { this.worstPitchSection = worstPitchSection; }
+	public void setSessionName(String sessionName) { this.sessionName = sessionName; }
 }
