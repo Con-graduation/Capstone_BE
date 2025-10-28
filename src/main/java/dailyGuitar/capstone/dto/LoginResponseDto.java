@@ -12,5 +12,8 @@ import lombok.NoArgsConstructor;
 public class LoginResponseDto {
 
     private String token;
+    private String name;
+    private String nickname;
+    private Integer level;
 }
 

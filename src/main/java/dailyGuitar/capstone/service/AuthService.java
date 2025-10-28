@@ -4,6 +4,11 @@ import dailyGuitar.capstone.dto.LoginRequestDto;
 import dailyGuitar.capstone.dto.LoginResponseDto;
 import dailyGuitar.capstone.dto.UserRegistrationDto;
 import dailyGuitar.capstone.dto.UserResponseDto;
+import dailyGuitar.capstone.entity.User;
+import dailyGuitar.capstone.entity.UserStatus;
+import dailyGuitar.capstone.exception.UserNotFoundException;
+import dailyGuitar.capstone.repository.UserRepository;
+import dailyGuitar.capstone.repository.UserStatusRepository;
 import dailyGuitar.capstone.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -21,6 +26,8 @@ public class AuthService {
     private final UserService userService;
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider jwtTokenProvider;
+    private final UserRepository userRepository;
+    private final UserStatusRepository userStatusRepository;
 
     @Transactional
     public UserResponseDto register(UserRegistrationDto registrationDto) {
@@ -62,8 +69,18 @@ public class AuthService {
         // 마지막 로그인 시간 업데이트
         userService.updateLastLogin(loginRequest.getUsername());
 
+        // 사용자 정보 조회
+        User user = userRepository.findByUsername(loginRequest.getUsername())
+                .orElseThrow(() -> new UserNotFoundException("사용자를 찾을 수 없습니다: " + loginRequest.getUsername()));
+        Integer level = userStatusRepository.findByUser(user)
+                .map(UserStatus::getLevel)
+                .orElse(1);
+
         return LoginResponseDto.builder()
                 .token(token)
+                .name(user.getName())
+                .nickname(user.getNickname())
+                .level(level)
                 .build();
     }
 

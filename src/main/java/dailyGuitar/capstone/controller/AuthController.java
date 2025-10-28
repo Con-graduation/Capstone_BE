@@ -10,6 +10,9 @@ import dailyGuitar.capstone.dto.VerifyEmailRequestDto;
 import dailyGuitar.capstone.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
@@ -73,11 +76,18 @@ public class AuthController {
                 .build());
     }
 
-    @Operation(summary = "로그인", description = "사용자 인증 후 JWT 토큰을 반환합니다.")
+    @Operation(summary = "로그인", description = "사용자 인증 후 JWT 토큰 및 사용자 정보를 반환합니다.")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "로그인 성공"),
-            @ApiResponse(responseCode = "401", description = "인증 실패"),
-            @ApiResponse(responseCode = "400", description = "잘못된 요청 데이터")
+            @ApiResponse(responseCode = "200", description = "로그인 성공",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = LoginResponseDto.class),
+                            examples = @ExampleObject(value = "{\n  \"token\": \"eyJhbGciOiJI...\",\n  \"name\": \"김민수\",\n  \"nickname\": \"min_guitar\",\n  \"level\": 5\n}"))),
+            @ApiResponse(responseCode = "401", description = "인증 실패",
+                    content = @Content(mediaType = "application/json",
+                            examples = @ExampleObject(value = "{\n  \"error\": \"Unauthorized\",\n  \"message\": \"아이디 또는 비밀번호가 올바르지 않습니다.\"\n}"))),
+            @ApiResponse(responseCode = "400", description = "잘못된 요청 데이터",
+                    content = @Content(mediaType = "application/json",
+                            examples = @ExampleObject(value = "{\n  \"error\": \"Bad Request\",\n  \"message\": \"username, password는 필수입니다.\"\n}")))
     })
     @PostMapping("/login")
     public ResponseEntity<LoginResponseDto> login(@Valid @RequestBody LoginRequestDto loginRequest) {
