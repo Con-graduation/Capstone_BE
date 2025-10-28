@@ -14,6 +14,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.http.MediaType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -25,6 +27,7 @@ import java.util.List;
 @RequestMapping("/api/routines")
 public class PracticeRoutineController {
 	private final PracticeRoutineService practiceRoutineService;
+    private static final Logger log = LoggerFactory.getLogger(PracticeRoutineController.class);
 
 	public PracticeRoutineController(PracticeRoutineService practiceRoutineService) {
 		this.practiceRoutineService = practiceRoutineService;
@@ -108,6 +111,15 @@ public class PracticeRoutineController {
 	public ResponseEntity<PracticeReportResponseDto> complete(
 			@RequestParam @NotNull Long routineId,
 			@RequestParam @NotNull MultipartFile audioFile) {
+        if (audioFile == null) {
+            log.info("[complete] routineId={}, audioFile=null", routineId);
+        } else {
+            log.info("[complete] routineId={}, audioFile name={}, size={}, contentType={}",
+                    routineId,
+                    audioFile.getOriginalFilename(),
+                    audioFile.getSize(),
+                    audioFile.getContentType());
+        }
 		PracticeReportResponseDto report = practiceRoutineService.complete(routineId, audioFile);
 		return ResponseEntity.ok(report);
 	}

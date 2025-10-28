@@ -145,42 +145,70 @@ public class PracticeRoutineService {
 			throw new IllegalArgumentException("Only WAV files are allowed. Received: " + contentType);
 		}
 		
-		// WAV 파일을 임시 디렉토리에 저장
-		Path tempFile;
-		try {
-			tempFile = saveTemporaryFile(audioFile);
-		} catch (IOException e) {
-			throw new RuntimeException("Failed to save temporary file", e);
-		}
-		
-		try {
-			// AI 분석 서비스로 파일 경로 전달
-			String analysisResult;
-			try {
-				analysisResult = audioAnalysisService.analyzeAudio(tempFile.toString());
-			} catch (IOException | InterruptedException e) {
-				throw new RuntimeException("Failed to analyze audio", e);
-			}
-			
-			// 분석 결과 파싱 및 PracticeSession 저장
-			PracticeSession session = parseAnalysisResult(analysisResult, userId, routineId);
-			practiceSessionRepository.save(session);
-			
-			// 연습 횟수 증가 및 마지막 연습 시간 업데이트
-			routine.setPracticeCount(routine.getPracticeCount() + 1);
-			routine.setLastPracticedAt(Instant.now());
-			practiceRoutineRepository.save(routine);
-			
-			// UserStatus 업데이트
-			updateUserStatus(userId, routine, session);
-			
-			// 보고서 생성 및 반환
-			return generatePracticeReport(session, routine);
-			
-		} finally {
-			// 임시 파일 삭제
-			deleteTemporaryFile(tempFile);
-		}
+        // 임시: 파일 저장/파이썬 분석 비활성화. 고정 보고서 생성으로 대체
+        // 아래는 원래 동작(파일 저장 → 파이썬 분석 → 결과 파싱) 코드로,
+        // 추후 복구를 위해 주석으로 보존합니다.
+        /*
+        // WAV 파일을 임시 디렉토리에 저장
+        Path tempFile;
+        try {
+            tempFile = saveTemporaryFile(audioFile);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to save temporary file", e);
+        }
+
+        try {
+            // AI 분석 서비스로 파일 경로 전달
+            String analysisResult;
+            try {
+                analysisResult = audioAnalysisService.analyzeAudio(tempFile.toString());
+            } catch (IOException | InterruptedException e) {
+                throw new RuntimeException("Failed to analyze audio", e);
+            }
+
+            // 분석 결과 파싱 및 PracticeSession 저장
+            PracticeSession session = parseAnalysisResult(analysisResult, userId, routineId);
+            practiceSessionRepository.save(session);
+
+            // 연습 횟수 증가 및 마지막 연습 시간 업데이트
+            routine.setPracticeCount(routine.getPracticeCount() + 1);
+            routine.setLastPracticedAt(Instant.now());
+            practiceRoutineRepository.save(routine);
+
+            // UserStatus 업데이트
+            updateUserStatus(userId, routine, session);
+
+            // 보고서 생성 및 반환
+            return generatePracticeReport(session, routine);
+        } finally {
+            // 임시 파일 삭제
+            deleteTemporaryFile(tempFile);
+        }
+        */
+
+        // 더미 세션 생성 (고정된 예시 값)
+        PracticeSession session = new PracticeSession();
+        session.setUserId(userId);
+        session.setRoutineId(routineId);
+        session.setRhythmAccuracy(92);
+        session.setPitchAccuracy(88);
+        session.setRhythmSectionScores("{\"early\":85,\"middle\":90,\"late\":88}");
+        session.setPitchSectionScores("{\"early\":80,\"middle\":86,\"late\":88}");
+        session.setWorstRhythmSection(PracticeSession.Section.EARLY);
+        session.setWorstPitchSection(PracticeSession.Section.MIDDLE);
+
+        practiceSessionRepository.save(session);
+
+        // 연습 횟수 증가 및 마지막 연습 시간 업데이트
+        routine.setPracticeCount(routine.getPracticeCount() + 1);
+        routine.setLastPracticedAt(Instant.now());
+        practiceRoutineRepository.save(routine);
+
+        // UserStatus 업데이트
+        updateUserStatus(userId, routine, session);
+
+        // 보고서 생성 및 반환
+        return generatePracticeReport(session, routine);
 	}
 	
 	/**
