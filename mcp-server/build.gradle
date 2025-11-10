@@ -1,0 +1,57 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.3.10'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'dailyGuitar'
+version = '0.0.1-SNAPSHOT'
+description = 'MCP Server for Daily Guitar'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Spring Boot (웹 서버는 실행하지 않음)
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    
+    // .env 로드
+    implementation 'me.paulschwarz:spring-dotenv:4.0.0'
+    
+    // Database (PostgreSQL)
+    runtimeOnly 'org.postgresql:postgresql:42.7.4'
+    
+    // JSON Processing
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    
+    // Lombok
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    
+    // MCP SDK (Java용 MCP 라이브러리 - 없으면 직접 구현)
+    // implementation 'com.anthropic:mcp-sdk-java:1.0.0' // 실제 라이브러리가 있으면 사용
+    
+    // HTTP 클라이언트 (구글 캘린더 API 호출용)
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    
+    // Test
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// 웹 서버 실행 비활성화
+springBoot {
+    mainClass = 'dailyGuitar.capstone.mcp.MCPServerApplication'
+}
+
