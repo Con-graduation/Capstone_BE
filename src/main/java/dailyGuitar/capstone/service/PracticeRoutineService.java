@@ -31,9 +31,13 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class PracticeRoutineService {
+	private static final Logger log = LoggerFactory.getLogger(PracticeRoutineService.class);
+	
 	private final PracticeRoutineRepository practiceRoutineRepository;
 	private final UserRepository userRepository;
 	private final AudioAnalysisService audioAnalysisService;
@@ -141,14 +145,24 @@ public class PracticeRoutineService {
 		}
 		
 		String contentType = audioFile.getContentType();
-		if (contentType == null || !contentType.equals("audio/wav")) {
+		String normCt = contentType == null ? null : contentType.toLowerCase();
+		if (normCt == null || !(normCt.equals("audio/wav") || normCt.equals("audio/wave") || normCt.equals("audio/x-wav"))) {
 			throw new IllegalArgumentException("Only WAV files are allowed. Received: " + contentType);
 		}
 		
-        // 임시: 파일 저장/파이썬 분석 비활성화. 고정 보고서 생성으로 대체
-        // 아래는 원래 동작(파일 저장 → 파이썬 분석 → 결과 파싱) 코드로,
-        // 추후 복구를 위해 주석으로 보존합니다.
-        /*
+		// 파일 내용 확인 (첫 16바이트)
+		try {
+			byte[] firstBytes = new byte[16];
+			int bytesRead = audioFile.getInputStream().read(firstBytes);
+			StringBuilder hex = new StringBuilder();
+			for (int i = 0; i < bytesRead; i++) {
+				hex.append(String.format("%02X ", firstBytes[i]));
+			}
+			log.info("[complete] File first {} bytes: {}", bytesRead, hex.toString());
+		} catch (IOException e) {
+			log.warn("[complete] Failed to read file bytes: {}", e.getMessage());
+		}
+		
         // WAV 파일을 임시 디렉토리에 저장
         Path tempFile;
         try {
@@ -158,16 +172,39 @@ public class PracticeRoutineService {
         }
 
         try {
-            // AI 분석 서비스로 파일 경로 전달
+            // 분석 인자 구성
+            java.util.List<String> args = new java.util.ArrayList<>();
+            args.add("--mode");
+            args.add(routine.getRoutineType().name().toLowerCase().contains("chord") ? "chord" : "chromatic");
+            args.add("--audio");
+            args.add(tempFile.toString());
+            args.add("--bpm");
+            args.add(String.valueOf(routine.getBpm()));
+            args.add("--repeats");
+            args.add(String.valueOf(routine.getRepeats()));
+            if (routine.getRoutineType().name().toLowerCase().contains("chord")) {
+                String chords = String.join(",", routine.getSequence());
+                args.add("--chords");
+                args.add(chords);
+                args.add("--beats-per-chord");
+                args.add("4");
+            } else {
+                // 크로매틱 기본 핑거 시퀀스 (필요 시 루틴에서 유도)
+                args.add("--fingers");
+                args.add(String.join(",", routine.getSequence()));
+            }
+
             String analysisResult;
             try {
-                analysisResult = audioAnalysisService.analyzeAudio(tempFile.toString());
+                analysisResult = audioAnalysisService.analyzeWithArgs(args);
             } catch (IOException | InterruptedException e) {
                 throw new RuntimeException("Failed to analyze audio", e);
             }
 
+            // 경고/로그가 섞인 출력에서 JSON만 추출
+            String jsonOnly = extractJsonPayload(analysisResult);
             // 분석 결과 파싱 및 PracticeSession 저장
-            PracticeSession session = parseAnalysisResult(analysisResult, userId, routineId);
+            PracticeSession session = parseAnalysisResult(jsonOnly, userId, routineId);
             practiceSessionRepository.save(session);
 
             // 연습 횟수 증가 및 마지막 연습 시간 업데이트
@@ -184,32 +221,6 @@ public class PracticeRoutineService {
             // 임시 파일 삭제
             deleteTemporaryFile(tempFile);
         }
-        */
-
-        // 더미 세션 생성 (고정된 예시 값)
-        PracticeSession session = new PracticeSession();
-        session.setUserId(userId);
-        session.setRoutineId(routineId);
-        session.setRhythmAccuracy(92);
-        session.setPitchAccuracy(88);
-        session.setRhythmSectionScores("{\"early\":85,\"middle\":90,\"late\":88}");
-        session.setPitchSectionScores("{\"early\":80,\"middle\":86,\"late\":88}");
-        session.setWorstRhythmSection(PracticeSession.Section.EARLY);
-        session.setWorstPitchSection(PracticeSession.Section.MIDDLE);
-        session.setSessionName("Practice Session " + Instant.now().toString());
-
-        practiceSessionRepository.save(session);
-
-        // 연습 횟수 증가 및 마지막 연습 시간 업데이트
-        routine.setPracticeCount(routine.getPracticeCount() + 1);
-        routine.setLastPracticedAt(Instant.now());
-        practiceRoutineRepository.save(routine);
-
-        // UserStatus 업데이트
-        updateUserStatus(userId, routine, session);
-
-        // 보고서 생성 및 반환
-        return generatePracticeReport(session, routine);
 	}
 	
 	/**
@@ -247,6 +258,30 @@ public class PracticeRoutineService {
 			throw new RuntimeException("Failed to parse analysis result: " + analysisResult, e);
 		}
 	}
+
+    /**
+     * 파이썬 표준출력에 경고/로그가 섞여 들어오는 경우 JSON 본문만 추출합니다.
+     * 규칙: 가장 처음 나오는 '{'부터 마지막 '}'까지를 JSON으로 간주.
+     */
+    private String extractJsonPayload(String output) {
+        if (output == null) return "";
+        int start = output.indexOf('{');
+        int end = output.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            String json = output.substring(start, end + 1).trim();
+            // 여러 JSON 라인이 있을 경우 마지막 줄을 선택하는 보정
+            // (경고 후 한 줄 JSON 형태를 기본으로 가정)
+            int newline = json.lastIndexOf('\n');
+            if (newline > 0) {
+                String maybeSingleLine = json.substring(newline + 1).trim();
+                if (maybeSingleLine.startsWith("{") && maybeSingleLine.endsWith("}")) {
+                    return maybeSingleLine;
+                }
+            }
+            return json;
+        }
+        return output.trim();
+    }
 	
 	/**
 	 * 섹션별 점수에서 가장 낮은 점수의 섹션을 찾습니다.
