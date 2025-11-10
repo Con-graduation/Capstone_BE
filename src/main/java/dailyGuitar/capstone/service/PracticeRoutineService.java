@@ -1,31 +1,62 @@
 package dailyGuitar.capstone.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dailyGuitar.capstone.dto.practice.PracticeRoutineCreateRequestDto;
 import dailyGuitar.capstone.dto.practice.PracticeRoutineResponseDto;
 import dailyGuitar.capstone.dto.practice.PracticeRoutineUpdateRequestDto;
+import dailyGuitar.capstone.dto.practice.PracticeReportResponseDto;
 import dailyGuitar.capstone.entity.PracticeRoutine;
+import dailyGuitar.capstone.entity.PracticeSession;
 import dailyGuitar.capstone.entity.User;
+import dailyGuitar.capstone.entity.UserStatus;
 import dailyGuitar.capstone.repository.PracticeRoutineRepository;
+import dailyGuitar.capstone.repository.PracticeSessionRepository;
 import dailyGuitar.capstone.repository.UserRepository;
+import dailyGuitar.capstone.repository.UserStatusRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class PracticeRoutineService {
+	private static final Logger log = LoggerFactory.getLogger(PracticeRoutineService.class);
+	
 	private final PracticeRoutineRepository practiceRoutineRepository;
 	private final UserRepository userRepository;
+	private final AudioAnalysisService audioAnalysisService;
+	private final PracticeSessionRepository practiceSessionRepository;
+	private final UserStatusRepository userStatusRepository;
+	private final ObjectMapper objectMapper;
 
-	public PracticeRoutineService(PracticeRoutineRepository practiceRoutineRepository, UserRepository userRepository) {
+	public PracticeRoutineService(
+			PracticeRoutineRepository practiceRoutineRepository, 
+			UserRepository userRepository,
+			AudioAnalysisService audioAnalysisService,
+			PracticeSessionRepository practiceSessionRepository,
+			UserStatusRepository userStatusRepository) {
 		this.practiceRoutineRepository = practiceRoutineRepository;
 		this.userRepository = userRepository;
+		this.audioAnalysisService = audioAnalysisService;
+		this.practiceSessionRepository = practiceSessionRepository;
+		this.userStatusRepository = userStatusRepository;
+		this.objectMapper = new ObjectMapper();
 	}
 
 	private Long getCurrentUserId() {
@@ -97,7 +128,7 @@ public class PracticeRoutineService {
 	}
 
 	@Transactional
-	public void complete(Long routineId, MultipartFile audioFile) {
+	public PracticeReportResponseDto complete(Long routineId, MultipartFile audioFile) {
 		Long userId = getCurrentUserId();
 		
 		// 루틴 조회 및 권한 확인
@@ -114,22 +145,185 @@ public class PracticeRoutineService {
 		}
 		
 		String contentType = audioFile.getContentType();
-		if (contentType == null || !contentType.equals("audio/wav")) {
+		String normCt = contentType == null ? null : contentType.toLowerCase();
+		if (normCt == null || !(normCt.equals("audio/wav") || normCt.equals("audio/wave") || normCt.equals("audio/x-wav"))) {
 			throw new IllegalArgumentException("Only WAV files are allowed. Received: " + contentType);
 		}
 		
-		// 여기서 나중에 AI 분석 로직 추가 예정
-		// 현재는 파일을 받아서 저장/처리하는 기본 구조만 구현
+		// 파일 내용 확인 (첫 16바이트)
+		try {
+			byte[] firstBytes = new byte[16];
+			int bytesRead = audioFile.getInputStream().read(firstBytes);
+			StringBuilder hex = new StringBuilder();
+			for (int i = 0; i < bytesRead; i++) {
+				hex.append(String.format("%02X ", firstBytes[i]));
+			}
+			log.info("[complete] File first {} bytes: {}", bytesRead, hex.toString());
+		} catch (IOException e) {
+			log.warn("[complete] Failed to read file bytes: {}", e.getMessage());
+		}
 		
-		// TODO: AI 분석 서비스로 파일 전달
-		// aiAnalysisService.analyze(audioFile);
+        // WAV 파일을 임시 디렉토리에 저장
+        Path tempFile;
+        try {
+            tempFile = saveTemporaryFile(audioFile);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to save temporary file", e);
+        }
+
+        try {
+            // 분석 인자 구성
+            java.util.List<String> args = new java.util.ArrayList<>();
+            args.add("--mode");
+            args.add(routine.getRoutineType().name().toLowerCase().contains("chord") ? "chord" : "chromatic");
+            args.add("--audio");
+            args.add(tempFile.toString());
+            args.add("--bpm");
+            args.add(String.valueOf(routine.getBpm()));
+            args.add("--repeats");
+            args.add(String.valueOf(routine.getRepeats()));
+            if (routine.getRoutineType().name().toLowerCase().contains("chord")) {
+                String chords = String.join(",", routine.getSequence());
+                args.add("--chords");
+                args.add(chords);
+                args.add("--beats-per-chord");
+                args.add("4");
+            } else {
+                // 크로매틱 기본 핑거 시퀀스 (필요 시 루틴에서 유도)
+                args.add("--fingers");
+                args.add(String.join(",", routine.getSequence()));
+            }
+
+            String analysisResult;
+            try {
+                analysisResult = audioAnalysisService.analyzeWithArgs(args);
+            } catch (IOException | InterruptedException e) {
+                throw new RuntimeException("Failed to analyze audio", e);
+            }
+
+            // 경고/로그가 섞인 출력에서 JSON만 추출
+            String jsonOnly = extractJsonPayload(analysisResult);
+            // 분석 결과 파싱 및 PracticeSession 저장
+            PracticeSession session = parseAnalysisResult(jsonOnly, userId, routineId);
+            practiceSessionRepository.save(session);
+
+            // 연습 횟수 증가 및 마지막 연습 시간 업데이트
+            routine.setPracticeCount(routine.getPracticeCount() + 1);
+            routine.setLastPracticedAt(Instant.now());
+            practiceRoutineRepository.save(routine);
+
+            // UserStatus 업데이트
+            updateUserStatus(userId, routine, session);
+
+            // 보고서 생성 및 반환
+            return generatePracticeReport(session, routine);
+        } finally {
+            // 임시 파일 삭제
+            deleteTemporaryFile(tempFile);
+        }
+	}
+	
+	/**
+	 * AI 분석 결과를 파싱하여 PracticeSession 엔티티를 생성합니다.
+	 */
+	private PracticeSession parseAnalysisResult(String analysisResult, Long userId, Long routineId) {
+		try {
+			JsonNode jsonNode = objectMapper.readTree(analysisResult);
+			
+			// 필수 필드 추출
+			int rhythmAccuracy = jsonNode.get("rhythm_accuracy").asInt();
+			int pitchAccuracy = jsonNode.get("pitch_accuracy").asInt();
+			
+			// 섹션별 점수 추출
+			String rhythmSectionScores = objectMapper.writeValueAsString(jsonNode.get("rhythm_sections"));
+			String pitchSectionScores = objectMapper.writeValueAsString(jsonNode.get("pitch_sections"));
+			
+			// 가장 점수가 낮은 섹션 추출
+			PracticeSession.Section worstRhythmSection = extractWorstSection(jsonNode.get("rhythm_sections"));
+			PracticeSession.Section worstPitchSection = extractWorstSection(jsonNode.get("pitch_sections"));
+			
+			// PracticeSession 생성
+			PracticeSession session = new PracticeSession();
+			session.setUserId(userId);
+			session.setRoutineId(routineId);
+			session.setRhythmAccuracy(rhythmAccuracy);
+			session.setPitchAccuracy(pitchAccuracy);
+			session.setRhythmSectionScores(rhythmSectionScores);
+			session.setPitchSectionScores(pitchSectionScores);
+			session.setWorstRhythmSection(worstRhythmSection);
+			session.setWorstPitchSection(worstPitchSection);
+			
+			return session;
+		} catch (Exception e) {
+			throw new RuntimeException("Failed to parse analysis result: " + analysisResult, e);
+		}
+	}
+
+    /**
+     * 파이썬 표준출력에 경고/로그가 섞여 들어오는 경우 JSON 본문만 추출합니다.
+     * 규칙: 가장 처음 나오는 '{'부터 마지막 '}'까지를 JSON으로 간주.
+     */
+    private String extractJsonPayload(String output) {
+        if (output == null) return "";
+        int start = output.indexOf('{');
+        int end = output.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            String json = output.substring(start, end + 1).trim();
+            // 여러 JSON 라인이 있을 경우 마지막 줄을 선택하는 보정
+            // (경고 후 한 줄 JSON 형태를 기본으로 가정)
+            int newline = json.lastIndexOf('\n');
+            if (newline > 0) {
+                String maybeSingleLine = json.substring(newline + 1).trim();
+                if (maybeSingleLine.startsWith("{") && maybeSingleLine.endsWith("}")) {
+                    return maybeSingleLine;
+                }
+            }
+            return json;
+        }
+        return output.trim();
+    }
+	
+	/**
+	 * 섹션별 점수에서 가장 낮은 점수의 섹션을 찾습니다.
+	 */
+	private PracticeSession.Section extractWorstSection(JsonNode sections) {
+		int minScore = Integer.MAX_VALUE;
+		String worstSection = "EARLY"; // 기본값
 		
-		// 연습 횟수 증가 및 마지막 연습 시간 업데이트
-		routine.setPracticeCount(routine.getPracticeCount() + 1);
-		routine.setLastPracticedAt(Instant.now());
-		practiceRoutineRepository.save(routine);
+		for (String section : new String[]{"early", "middle", "late"}) {
+			if (sections.has(section)) {
+				int score = sections.get(section).asInt();
+				if (score < minScore) {
+					minScore = score;
+					worstSection = section.toUpperCase();
+				}
+			}
+		}
 		
-		// TODO: S3에 파일 저장하거나 AI 분석 결과 처리
+		return PracticeSession.Section.valueOf(worstSection);
+	}
+	
+	/**
+	 * MultipartFile을 임시 디렉토리에 저장합니다.
+	 */
+	private Path saveTemporaryFile(MultipartFile file) throws IOException {
+		Path tempDir = Files.createTempDirectory("guitar-practice-");
+		Path tempFile = tempDir.resolve(UUID.randomUUID().toString() + ".wav");
+		Files.copy(file.getInputStream(), tempFile);
+		return tempFile;
+	}
+	
+	/**
+	 * 임시 파일을 삭제합니다.
+	 */
+	private void deleteTemporaryFile(Path tempFile) {
+		try {
+			Files.deleteIfExists(tempFile);
+			// 임시 디렉토리도 삭제 시도
+			Files.deleteIfExists(tempFile.getParent());
+		} catch (IOException e) {
+			System.err.println("Failed to delete temporary file: " + tempFile);
+		}
 	}
 
 	private PracticeRoutineResponseDto toResponse(PracticeRoutine r) {
@@ -147,4 +341,150 @@ public class PracticeRoutineService {
 		dto.setLastPracticedAt(r.getLastPracticedAt());
 		return dto;
 	}
+	
+	/**
+	 * UserStatus를 업데이트합니다.
+	 */
+	private void updateUserStatus(Long userId, PracticeRoutine routine, PracticeSession session) {
+		User user = userRepository.findById(userId)
+				.orElseThrow(() -> new NoSuchElementException("User not found"));
+		
+		userStatusRepository.findByUser(user).ifPresentOrElse(
+				status -> {
+					// 기존 UserStatus 업데이트
+					status.setTotalPracticeCount(status.getTotalPracticeCount() + 1);
+					
+					// 전체 정확도 계산 (박자 + 음정 평균)
+					int overallAccuracy = (session.getRhythmAccuracy() + session.getPitchAccuracy()) / 2;
+					
+					// 전체 평균 정확도 재계산
+					List<PracticeSession> allSessions = practiceSessionRepository.findByUserIdOrderByCreatedAtDesc(userId);
+					if (!allSessions.isEmpty()) {
+						double avgAccuracy = allSessions.stream()
+								.mapToInt(s -> (s.getRhythmAccuracy() + s.getPitchAccuracy()) / 2)
+								.average()
+								.orElse(0.0);
+						status.setOverallAccuracy((int) Math.round(avgAccuracy));
+					} else {
+						status.setOverallAccuracy(overallAccuracy);
+					}
+					
+					// 최고 정확도 업데이트
+					if (overallAccuracy > status.getMaxAccuracy()) {
+						status.setMaxAccuracy(overallAccuracy);
+					}
+					
+					// 경험치 추가
+					long newExperience = status.getTotalExperience() + routine.getXpPerRun();
+					status.setTotalExperience(newExperience);
+					
+					// 레벨 계산 (경험치를 기반으로)
+					int newLevel = calculateLevel(newExperience);
+					status.setLevel(newLevel);
+					
+					// Streak 계산
+					updateStreak(status, session);
+					
+					userStatusRepository.save(status);
+				},
+				() -> {
+					// UserStatus가 없으면 생성
+					UserStatus status = new UserStatus();
+					status.setUser(user);
+					status.setTotalPracticeCount(1L);
+					int overallAccuracy = (session.getRhythmAccuracy() + session.getPitchAccuracy()) / 2;
+					status.setOverallAccuracy(overallAccuracy);
+					status.setMaxAccuracy(overallAccuracy);
+					status.setTotalExperience((long) routine.getXpPerRun());
+					userStatusRepository.save(status);
+				}
+		);
+	}
+	
+	/**
+	 * 연습 보고서를 생성합니다.
+	 */
+	private PracticeReportResponseDto generatePracticeReport(PracticeSession session, PracticeRoutine routine) {
+		PracticeReportResponseDto report = new PracticeReportResponseDto();
+		
+		// 박자 정확도 정보
+		report.setRhythmAccuracy(session.getRhythmAccuracy());
+		report.setRhythmFeedback(generateAccuracyFeedback(session.getRhythmAccuracy()));
+		report.setRhythmWorstSection(getWorstSectionMessage(session.getWorstRhythmSection()));
+		
+		// 음정 정확도 정보
+		report.setPitchAccuracy(session.getPitchAccuracy());
+		report.setPitchFeedback(generateAccuracyFeedback(session.getPitchAccuracy()));
+		report.setPitchWorstSection(getWorstSectionMessage(session.getWorstPitchSection()));
+		
+		// TODO: 이전 연습과 비교, BPM 조언 등
+		
+		// 종합 피드백
+		report.setOverallFeedback("이번 연습도 정말 잘했습니다!");
+		
+		return report;
+	}
+	
+	/**
+	 * 정확도에 따른 피드백을 생성합니다.
+	 */
+	private String generateAccuracyFeedback(int accuracy) {
+		if (accuracy >= 90) {
+			return "거의 완벽한 수준이에요!";
+		} else if (accuracy >= 70) {
+			return "잘 연주하고 있어요!";
+		} else if (accuracy >= 50) {
+			return "조금 더 연습하면 나아질 거예요!";
+		} else {
+			return "꾸준한 연습이 필요해요!";
+		}
+	}
+	
+	/**
+	 * 섹션 정보를 메시지로 변환합니다.
+	 */
+	private String getWorstSectionMessage(PracticeSession.Section section) {
+		switch (section) {
+			case EARLY:
+				return "초반에서 연주가 가장 불안정했어요";
+			case MIDDLE:
+				return "중반에서 연주가 가장 불안정했어요";
+			case LATE:
+				return "후반에서 연주가 가장 불안정했어요";
+			default:
+				return "전체적으로 안정적인 연주였어요";
+		}
+	}
+
+	/**
+ * 경험치를 기반으로 레벨을 계산합니다.
+ */
+private int calculateLevel(long experience) {
+    return (int) Math.floor(Math.sqrt(experience / 50.0)) + 1;
+}
+
+/**
+ * Streak을 업데이트합니다.
+ */
+private void updateStreak(UserStatus status, PracticeSession session) {
+    String today = Instant.now().atZone(ZoneId.of("Asia/Seoul"))
+            .format(DateTimeFormatter.ISO_LOCAL_DATE);
+    
+    Optional<PracticeSession> lastSession = practiceSessionRepository
+            .findByUserIdOrderByCreatedAtDesc(status.getUser().getId())
+            .stream()
+            .skip(1)
+            .findFirst();
+    
+    if (lastSession.isPresent()) {
+        String lastDate = lastSession.get().getCreatedAt().atZone(ZoneId.of("Asia/Seoul"))
+                .format(DateTimeFormatter.ISO_LOCAL_DATE);
+        
+        if (!today.equals(lastDate)) {
+            status.setStreakDays(status.getStreakDays() + 1);
+        }
+    } else {
+        status.setStreakDays(1);
+    }
+}
 }

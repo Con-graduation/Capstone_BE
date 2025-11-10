@@ -10,6 +10,7 @@ import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignReques
 
 import java.net.URL;
 import java.time.Duration;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -27,7 +28,8 @@ public class PresignedUrlService {
 	}
 
 	public Result createUploadUrl(String contentType, String originalFilename) {
-		String ext = extractExtension(originalFilename);
+        validateFileType(contentType, originalFilename);
+        String ext = extractExtension(originalFilename);
 		String objectKey = prefix + UUID.randomUUID() + (ext.isEmpty() ? "" : ("." + ext));
 
 		PutObjectRequest putObjectRequest = PutObjectRequest.builder()
@@ -44,6 +46,27 @@ public class PresignedUrlService {
 		URL url = presigner.presignPutObject(presignRequest).url();
 		return new Result(url.toString(), objectKey);
 	}
+
+    private void validateFileType(String contentType, String filename) {
+        if (filename == null || filename.isBlank()) {
+            throw new IllegalArgumentException("filename이 비어 있습니다.");
+        }
+
+        String normalizedContentType = contentType == null ? "" : contentType.toLowerCase();
+        String ext = extractExtension(filename).toLowerCase();
+
+        // 허용 확장자: jpg, jpeg(요청에 포함된 ipeg도 호환 처리), png, webp
+        Set<String> allowedExtensions = Set.of("jpg", "jpeg", "png", "webp");
+        Set<String> allowedContentTypes = Set.of("image/jpeg", "image/png", "image/webp", "image/jpg");
+
+        if (!allowedExtensions.contains(ext)) {
+            throw new IllegalArgumentException("허용되지 않은 파일 확장자입니다. 허용: jpg, jpeg, png, webp");
+        }
+
+        if (!allowedContentTypes.contains(normalizedContentType)) {
+            throw new IllegalArgumentException("허용되지 않은 MIME 타입입니다. 허용: image/jpeg, image/png, image/webp");
+        }
+    }
 
 	private String extractExtension(String filename) {
 		if (filename == null) return "";

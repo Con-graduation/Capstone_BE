@@ -3,9 +3,12 @@ package dailyGuitar.capstone.service;
 import dailyGuitar.capstone.dto.UserRegistrationDto;
 import dailyGuitar.capstone.dto.UserResponseDto;
 import dailyGuitar.capstone.entity.User;
+import dailyGuitar.capstone.entity.UserStatus;
+import dailyGuitar.capstone.dto.ProfileStatsResponseDto;
 import dailyGuitar.capstone.exception.UserAlreadyExistsException;
 import dailyGuitar.capstone.exception.UserNotFoundException;
 import dailyGuitar.capstone.repository.UserRepository;
+import dailyGuitar.capstone.repository.UserStatusRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -23,6 +26,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+    private final UserStatusRepository userStatusRepository;
 
     public UserResponseDto registerUser(UserRegistrationDto registrationDto) {
         // 이메일로 임시 사용자 찾기
@@ -186,5 +190,53 @@ public class UserService {
         return userRepository.findByUsername(username)
                 .orElseThrow(() -> new UserNotFoundException("사용자를 찾을 수 없습니다: " + username));
     }
+
+    @Transactional(readOnly = true)
+    public ProfileStatsResponseDto getProfileStats(String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new UserNotFoundException("사용자를 찾을 수 없습니다: " + username));
+        UserStatus status = userStatusRepository.findByUser(user)
+                .orElseGet(() -> {
+                    UserStatus s = new UserStatus();
+                    s.setUser(user);
+                    s.setLevel(1);
+                    return s;
+                });
+
+        int level = status.getLevel() == null ? 1 : status.getLevel();
+        long totalSeconds = status.getTotalPracticeSeconds() == null ? 0L : status.getTotalPracticeSeconds();
+
+        int required = requiredExpForLevel(level);
+        int toNext = expToNextLevel(level, status.getTotalExperience() == null ? 0L : status.getTotalExperience());
+
+        return ProfileStatsResponseDto.builder()
+                .requiredExpForLevel(required)
+                .expToNextLevel(toNext)
+                .maxAccuracy(nullSafe(status.getMaxAccuracy()))
+                .totalPracticeCount(nullSafe(status.getTotalPracticeCount()))
+                .totalPracticeMinutes(totalSeconds / 60)
+                .streakDays(nullSafe(status.getStreakDays()))
+                .averageAccuracy(nullSafe(status.getOverallAccuracy()))
+                .build();
+    }
+
+    private int requiredExpForLevel(int level) {
+        if (level >= 50) return 0; // 만렙
+        if (level <= 10) return 200;
+        if (level <= 30) return 500;
+        if (level <= 40) return 1000;
+        return 2000; // 41~49
+    }
+
+    private int expToNextLevel(int level, long totalExp) {
+        if (level >= 50) return 0;
+        // 누적 경험치에서 현재 레벨에 필요한 경험치만큼 남은 양을 단순 계산
+        int req = requiredExpForLevel(level);
+        long mod = totalExp % req; // 현재 레벨 진행도
+        return (int) (req - mod);
+    }
+
+    private int nullSafe(Integer v) { return v == null ? 0 : v; }
+    private long nullSafe(Long v) { return v == null ? 0L : v; }
 }
 
