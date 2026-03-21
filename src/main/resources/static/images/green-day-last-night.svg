@@ -1,0 +1,7 @@
+<svg width="300" height="300" xmlns="http://www.w3.org/2000/svg">
+  <rect width="300" height="300" fill="#4CAF50"/>
+  <text x="150" y="120" font-family="Arial, sans-serif" font-size="24" font-weight="bold" text-anchor="middle" fill="white">Green Day</text>
+  <text x="150" y="160" font-family="Arial, sans-serif" font-size="18" text-anchor="middle" fill="white">Last Night On Earth</text>
+  <circle cx="150" cy="200" r="30" fill="white" opacity="0.3"/>
+  <text x="150" y="210" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" fill="#4CAF50">🎵</text>
+</svg>

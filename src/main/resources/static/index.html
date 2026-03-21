@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DailyGuitar - 맞춤 곡 추천</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- 헤더 -->
+        <header class="header">
+            <div class="header-content">
+                <div class="home-icon">🏠</div>
+                <h1 class="app-title">DailyGuitar</h1>
+                <div class="profile-icon">👤</div>
+            </div>
+        </header>
+
+        <!-- 메인 콘텐츠 -->
+        <main class="main-content">
+            <div class="recommendation-section">
+                <h2 class="section-title">맞춤 곡 추천</h2>
+                
+                <!-- 추천 곡 목록 -->
+                <div class="song-list">
+                    <div class="song-item">
+                        <div class="album-cover">
+                            <img src="/images/green-day-last-night.svg" alt="Green Day - Last Night On Earth" class="cover-image">
+                        </div>
+                        <div class="song-info">
+                            <h3 class="song-title">Last Night On Earth</h3>
+                            <p class="artist-name">Green Day</p>
+                        </div>
+                    </div>
+
+                    <div class="song-item">
+                        <div class="album-cover">
+                            <img src="/images/acdc-back-in-black.svg" alt="AC/DC - Back in Black" class="cover-image">
+                        </div>
+                        <div class="song-info">
+                            <h3 class="song-title">Back in Black</h3>
+                            <p class="artist-name">AC/DC</p>
+                        </div>
+                    </div>
+
+                    <div class="song-item">
+                        <div class="album-cover">
+                            <img src="/images/green-day-american-idiot.svg" alt="Green Day - American Idiot" class="cover-image">
+                        </div>
+                        <div class="song-info">
+                            <h3 class="song-title">American Idiot</h3>
+                            <p class="artist-name">Green Day</p>
+                        </div>
+                    </div>
+
+                    <div class="song-item">
+                        <div class="album-cover">
+                            <img src="/images/rhcp-by-the-way.svg" alt="Red Hot Chili Peppers - By the Way" class="cover-image">
+                        </div>
+                        <div class="song-info">
+                            <h3 class="song-title">By the Way</h3>
+                            <p class="artist-name">Red Hot Chili Peppers</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 추가 액션 버튼 -->
+                <div class="action-buttons">
+                    <button class="refresh-btn">
+                        <span class="refresh-icon">🔄</span>
+                        또 다른 곡
+                    </button>
+                </div>
+
+                <!-- 수동 설정 섹션 -->
+                <div class="manual-settings">
+                    <h3 class="settings-title">곡 추천 수동 설정</h3>
+                    <p class="settings-description">원하는 코드와 BPM을 선택해주세요!</p>
+                </div>
+            </div>
+        </main>
+
+        <!-- 하단 네비게이션 -->
+        <nav class="bottom-nav">
+            <div class="nav-item">
+                <div class="nav-icon">🎵⭐</div>
+            </div>
+            <div class="nav-item">
+                <div class="nav-icon">🎸</div>
+            </div>
+            <div class="nav-item">
+                <div class="nav-icon">▶️</div>
+            </div>
+            <div class="nav-item">
+                <div class="nav-icon">📊🎵</div>
+            </div>
+            <div class="nav-item">
+                <div class="nav-icon">⚙️</div>
+            </div>
+        </nav>
+    </div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>

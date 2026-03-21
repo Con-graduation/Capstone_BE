@@ -1,0 +1,45 @@
+# Environment (실제 비밀은 .env 만 — 예시 파일은 커밋)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# macOS
+.DS_Store
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Logs
+logs/
+*.log
+
+# IntelliJ / IDEA
+*.iml
+.idea/
+out/
+
+# Eclipse
+.project
+.classpath
+.settings/
+
+# VSCode
+.vscode/
+
+# Temporary files
+*.swp
+*.swo
+*.tmp
+
+# Coverage/test
+coverage/
+.jacoco/
+
+# Spring Boot
+*.pid
+
+bin/
+
