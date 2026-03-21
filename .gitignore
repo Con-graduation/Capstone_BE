@@ -1,6 +1,8 @@
-# Environment
+# Environment (실제 비밀은 .env 만 — 예시 파일은 커밋)
 .env
-.env.*
+.env.local
+.env.*.local
+!.env.example
 
 # macOS
 .DS_Store
@@ -38,4 +40,6 @@ coverage/
 
 # Spring Boot
 *.pid
+
+bin/
 
