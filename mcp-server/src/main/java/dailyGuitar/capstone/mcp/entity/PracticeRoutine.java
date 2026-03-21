@@ -1,19 +1,6 @@
-package dailyGuitar.capstone.entity;
+package dailyGuitar.capstone.mcp.entity;
 
-import jakarta.persistence.CollectionTable;
-import jakarta.persistence.Column;
-import jakarta.persistence.ElementCollection;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Table;
-import jakarta.persistence.Entity;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
+import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,35 +16,28 @@ public class PracticeRoutine {
 	private Long userId;
 
 	@Column(name = "routine_name", nullable = false, length = 100)
-	private String title; // 루틴 이름
+	private String title;
 
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false, length = 20)
-	private RoutineType routineType; // CHORD_CHANGE, CHROMATIC
+	private RoutineType routineType;
 
 	@ElementCollection(fetch = FetchType.EAGER)
 	@CollectionTable(name = "practice_routine_sequence", joinColumns = @JoinColumn(name = "routine_id"))
 	@Column(name = "step", length = 10, nullable = false)
-	private List<String> sequence = new ArrayList<>(); // 코드/손가락 순서
+	private List<String> sequence = new ArrayList<>();
 
 	@Column(nullable = false)
-	private Integer repeats; // 5,10,20
+	private Integer repeats;
 
 	@Column(nullable = false)
-	private Integer bpm; // 타입별 제약
+	private Integer bpm;
 
 	@Column(nullable = false)
-	private Long practiceCount = 0L; // 총 연습 횟수
+	private Long practiceCount = 0L;
 
-	// 경험치: repeats * (bpm 계수). bpm 계수는 20->1.2, ... 100->2.0 등 선형 매핑
 	@Column(nullable = false)
 	private Integer xpPerRun = 0;
-
-	// 루틴 1회 연습 시간(초)
-	// 코드 연습: 코드 4개 * 4박자 * 반복 횟수 = (16 * 60 * repeats) / bpm 초
-	// 크로매틱: 24*9 = 216번 = (216 * 60) / bpm 초
-	@Column(nullable = false)
-	private Integer practiceSecondsPerRun = 0;
 
 	@Column(nullable = false, updatable = false)
 	private Instant createdAt;
@@ -83,36 +63,9 @@ public class PracticeRoutine {
 	}
 
 	private void recalculateXpPerRun() {
-		if (repeats == null || bpm == null) { 
-			this.xpPerRun = 0; 
-			this.practiceSecondsPerRun = 0;
-			return; 
-		}
-		// bpmFactor: 20bpm=1.2, 100bpm=2.0 → 0.8 span over 80 bpm: factor = 1.2 + (bpm-20)*0.01
+		if (repeats == null || bpm == null) { this.xpPerRun = 0; return; }
 		double factor = 1.2 + Math.max(0, bpm - 20) * 0.01d;
 		this.xpPerRun = (int)Math.round(repeats * factor);
-		
-		// 연습 시간 계산
-		recalculatePracticeSeconds();
-	}
-	
-	private void recalculatePracticeSeconds() {
-		if (routineType == null || repeats == null || bpm == null || bpm == 0) {
-			this.practiceSecondsPerRun = 0;
-			return;
-		}
-		
-		if (routineType == RoutineType.CHORD_CHANGE) {
-			// 코드 연습: 코드 4개 * 4박자 * 반복 횟수
-			// 16박자 * (60초/bpm) * repeats = (16 * 60 * repeats) / bpm 초
-			this.practiceSecondsPerRun = (16 * 60 * repeats) / bpm;
-		} else if (routineType == RoutineType.CHROMATIC) {
-			// 크로매틱: 24*9 = 216번
-			// 216번 * (60초/bpm) = (216 * 60) / bpm 초
-			this.practiceSecondsPerRun = (216 * 60) / bpm;
-		} else {
-			this.practiceSecondsPerRun = 0;
-		}
 	}
 
 	public Long getId() { return id; }
@@ -124,7 +77,6 @@ public class PracticeRoutine {
 	public Integer getBpm() { return bpm; }
 	public Long getPracticeCount() { return practiceCount; }
 	public Integer getXpPerRun() { return xpPerRun; }
-	public Integer getPracticeSecondsPerRun() { return practiceSecondsPerRun; }
 	public Instant getCreatedAt() { return createdAt; }
 	public Instant getUpdatedAt() { return updatedAt; }
 	public Instant getLastPracticedAt() { return lastPracticedAt; }
