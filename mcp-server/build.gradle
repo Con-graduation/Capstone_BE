@@ -31,6 +31,7 @@ dependencies {
     
     // JSON Processing
     implementation 'com.fasterxml.jackson.core:jackson-databind'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310' // Java 8 time support
     
     // Lombok
     compileOnly 'org.projectlombok:lombok'
@@ -39,8 +40,19 @@ dependencies {
     // MCP SDK (Java용 MCP 라이브러리 - 없으면 직접 구현)
     // implementation 'com.anthropic:mcp-sdk-java:1.0.0' // 실제 라이브러리가 있으면 사용
     
-    // HTTP 클라이언트 (구글 캘린더 API 호출용)
-    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    // HTTP 서버 및 클라이언트 (프론트엔드 연결용 REST API + 구글 캘린더 API 호출용)
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    
+    // Spring Security (CORS 설정 및 보안 필터용)
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    
+    // Logging (Logback)
+    implementation 'org.springframework.boot:spring-boot-starter-logging'
+    
+    // JWT 토큰 검증용
+    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
     
     // Test
     testImplementation 'org.springframework.boot:spring-boot-starter-test'

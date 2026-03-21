@@ -26,9 +26,11 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Random;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -205,7 +207,8 @@ public class PracticeRoutineService {
             String jsonOnly = extractJsonPayload(analysisResult);
             // 분석 결과 파싱 및 PracticeSession 저장
             PracticeSession session = parseAnalysisResult(jsonOnly, userId, routineId);
-            practiceSessionRepository.save(session);
+            PracticeSession savedSession = practiceSessionRepository.save(session);
+            practiceSessionRepository.flush(); // 즉시 DB에 반영하여 ID 할당 보장
 
             // 연습 횟수 증가 및 마지막 연습 시간 업데이트
             routine.setPracticeCount(routine.getPracticeCount() + 1);
@@ -213,10 +216,10 @@ public class PracticeRoutineService {
             practiceRoutineRepository.save(routine);
 
             // UserStatus 업데이트
-            updateUserStatus(userId, routine, session);
+            updateUserStatus(userId, routine, savedSession);
 
             // 보고서 생성 및 반환
-            return generatePracticeReport(session, routine);
+            return generatePracticeReport(savedSession, routine);
         } finally {
             // 임시 파일 삭제
             deleteTemporaryFile(tempFile);
@@ -378,6 +381,10 @@ public class PracticeRoutineService {
 					long newExperience = status.getTotalExperience() + routine.getXpPerRun();
 					status.setTotalExperience(newExperience);
 					
+					// 연습 시간 추가
+					long newTotalSeconds = status.getTotalPracticeSeconds() + routine.getPracticeSecondsPerRun();
+					status.setTotalPracticeSeconds(newTotalSeconds);
+					
 					// 레벨 계산 (경험치를 기반으로)
 					int newLevel = calculateLevel(newExperience);
 					status.setLevel(newLevel);
@@ -396,6 +403,7 @@ public class PracticeRoutineService {
 					status.setOverallAccuracy(overallAccuracy);
 					status.setMaxAccuracy(overallAccuracy);
 					status.setTotalExperience((long) routine.getXpPerRun());
+					status.setTotalPracticeSeconds((long) routine.getPracticeSecondsPerRun());
 					userStatusRepository.save(status);
 				}
 		);
@@ -409,51 +417,358 @@ public class PracticeRoutineService {
 		
 		// 박자 정확도 정보
 		report.setRhythmAccuracy(session.getRhythmAccuracy());
-		report.setRhythmFeedback(generateAccuracyFeedback(session.getRhythmAccuracy()));
+		report.setRhythmFeedback(generateRhythmFeedback(session.getRhythmAccuracy()));
 		report.setRhythmWorstSection(getWorstSectionMessage(session.getWorstRhythmSection()));
 		
 		// 음정 정확도 정보
 		report.setPitchAccuracy(session.getPitchAccuracy());
-		report.setPitchFeedback(generateAccuracyFeedback(session.getPitchAccuracy()));
+		report.setPitchFeedback(generatePitchFeedback(session.getPitchAccuracy()));
 		report.setPitchWorstSection(getWorstSectionMessage(session.getWorstPitchSection()));
 		
-		// TODO: 이전 연습과 비교, BPM 조언 등
+		// 이전 연습 기록 조회 (현재 세션 제외, 최대 5개)
+		// session.getId()가 null일 수 있으므로 createdAt으로도 필터링
+		Instant currentSessionCreatedAt = session.getCreatedAt();
+		List<PracticeSession> previousSessions = practiceSessionRepository
+				.findByUserIdAndRoutineIdOrderByCreatedAtDesc(session.getUserId(), session.getRoutineId())
+				.stream()
+				.filter(s -> {
+					// 현재 세션 제외: ID가 있으면 ID로, 없으면 createdAt으로 비교
+					if (session.getId() != null && s.getId() != null) {
+						return !s.getId().equals(session.getId());
+					} else {
+						// ID가 없는 경우 createdAt으로 비교 (같은 시간이면 제외)
+						return !s.getCreatedAt().equals(currentSessionCreatedAt);
+					}
+				})
+				.limit(5) // 최대 5개
+				.collect(Collectors.toList());
 		
-		// 종합 피드백
-		report.setOverallFeedback("이번 연습도 정말 잘했습니다!");
+		// 박자 히스토리 생성
+		List<PracticeReportResponseDto.PreviousPracticeDto> rhythmHistory = previousSessions.stream()
+				.map(s -> {
+					PracticeReportResponseDto.PreviousPracticeDto dto = new PracticeReportResponseDto.PreviousPracticeDto();
+					dto.setAccuracy(s.getRhythmAccuracy());
+					dto.setPracticedAt(s.getCreatedAt().toString());
+					return dto;
+				})
+				.collect(Collectors.toList());
+		report.setRhythmHistory(rhythmHistory.isEmpty() ? null : rhythmHistory);
+		
+		// 음정 히스토리 생성
+		List<PracticeReportResponseDto.PreviousPracticeDto> pitchHistory = previousSessions.stream()
+				.map(s -> {
+					PracticeReportResponseDto.PreviousPracticeDto dto = new PracticeReportResponseDto.PreviousPracticeDto();
+					dto.setAccuracy(s.getPitchAccuracy());
+					dto.setPracticedAt(s.getCreatedAt().toString());
+					return dto;
+				})
+				.collect(Collectors.toList());
+		report.setPitchHistory(pitchHistory.isEmpty() ? null : pitchHistory);
+		
+		// 이전 연습과 비교 (직전 연습이 있는 경우)
+		if (!previousSessions.isEmpty()) {
+			PracticeSession lastSession = previousSessions.get(0);
+			int rhythmDiff = session.getRhythmAccuracy() - lastSession.getRhythmAccuracy();
+			int pitchDiff = session.getPitchAccuracy() - lastSession.getPitchAccuracy();
+			
+			if (rhythmDiff > 0) {
+				report.setRhythmComparison(String.format("직전 연습보다 %d%% 향상", rhythmDiff));
+			} else if (rhythmDiff < 0) {
+				report.setRhythmComparison(String.format("직전 연습보다 %d%% 하락", Math.abs(rhythmDiff)));
+			} else {
+				report.setRhythmComparison("직전 연습과 동일한 수준");
+			}
+			
+			if (pitchDiff > 0) {
+				report.setPitchComparison(String.format("직전 연습보다 %d%% 향상", pitchDiff));
+			} else if (pitchDiff < 0) {
+				report.setPitchComparison(String.format("직전 연습보다 %d%% 하락", Math.abs(pitchDiff)));
+			} else {
+				report.setPitchComparison("직전 연습과 동일한 수준");
+			}
+		}
+		
+		// 종합 피드백 (이전 연습과의 비교를 고려)
+		int overallAccuracy = (session.getRhythmAccuracy() + session.getPitchAccuracy()) / 2;
+		report.setOverallFeedback(generateOverallFeedback(overallAccuracy, previousSessions));
 		
 		return report;
 	}
 	
 	/**
-	 * 정확도에 따른 피드백을 생성합니다.
+	 * 리듬 정확도에 따른 피드백을 생성합니다.
 	 */
-	private String generateAccuracyFeedback(int accuracy) {
-		if (accuracy >= 90) {
-			return "거의 완벽한 수준이에요!";
+	private String generateRhythmFeedback(int accuracy) {
+		Random random = new Random();
+		List<String> messages;
+		
+		if (accuracy >= 95) {
+			messages = Arrays.asList(
+				"완벽한 박자감이에요! 🎵",
+				"리듬이 정말 정확해요!",
+				"박자감이 탁월합니다!",
+				"메트로놈처럼 정확한 박자예요!",
+				"박자 실력이 프로 수준이에요!"
+			);
+		} else if (accuracy >= 90) {
+			messages = Arrays.asList(
+				"거의 완벽한 박자감이에요!",
+				"리듬이 매우 안정적이에요!",
+				"박자감이 훌륭합니다!",
+				"리듬 실력이 뛰어나요!",
+				"박자를 정확히 맞추고 있어요!"
+			);
+		} else if (accuracy >= 80) {
+			messages = Arrays.asList(
+				"박자감이 좋아요!",
+				"리듬이 안정적이에요!",
+				"박자를 잘 맞추고 있어요!",
+				"리듬 실력이 꾸준히 향상되고 있어요!",
+				"박자감이 개선되고 있어요!"
+			);
 		} else if (accuracy >= 70) {
-			return "잘 연주하고 있어요!";
+			messages = Arrays.asList(
+				"박자감이 괜찮아요!",
+				"리듬 연습이 도움이 될 거예요!",
+				"박자를 조금 더 정확히 맞추면 좋겠어요!",
+				"리듬 실력이 향상되고 있어요!",
+				"메트로놈과 함께 연습하면 더 좋을 거예요!"
+			);
+		} else if (accuracy >= 60) {
+			messages = Arrays.asList(
+				"박자 연습이 필요해요!",
+				"리듬감을 키우기 위해 연습하세요!",
+				"박자를 더 정확히 맞추면 좋겠어요!",
+				"리듬 연습을 꾸준히 하면 나아질 거예요!",
+				"메트로놈을 활용한 연습을 추천해요!"
+			);
 		} else if (accuracy >= 50) {
-			return "조금 더 연습하면 나아질 거예요!";
+			messages = Arrays.asList(
+				"박자 연습이 더 필요해요!",
+				"리듬감을 기르기 위해 노력하세요!",
+				"박자를 맞추는 연습을 해보세요!",
+				"리듬 연습을 꾸준히 하면 좋아질 거예요!",
+				"천천히 메트로놈에 맞춰 연습해보세요!"
+			);
 		} else {
-			return "꾸준한 연습이 필요해요!";
+			messages = Arrays.asList(
+				"박자 연습이 많이 필요해요!",
+				"리듬감을 키우기 위해 꾸준히 연습하세요!",
+				"박자를 맞추는 기본 연습이 필요해요!",
+				"리듬 연습을 차근차근 해보세요!",
+				"메트로놈과 함께 천천히 연습하면 좋아질 거예요!"
+			);
 		}
+		
+		return messages.get(random.nextInt(messages.size()));
+	}
+	
+	/**
+	 * 음정 정확도에 따른 피드백을 생성합니다.
+	 */
+	private String generatePitchFeedback(int accuracy) {
+		Random random = new Random();
+		List<String> messages;
+		
+		if (accuracy >= 95) {
+			messages = Arrays.asList(
+				"완벽한 음정이에요! 🎶",
+				"음정이 정말 정확해요!",
+				"음정감이 탁월합니다!",
+				"튜너처럼 정확한 음정이에요!",
+				"음정 실력이 프로 수준이에요!"
+			);
+		} else if (accuracy >= 90) {
+			messages = Arrays.asList(
+				"거의 완벽한 음정이에요!",
+				"음정이 매우 정확해요!",
+				"음정감이 훌륭합니다!",
+				"음정 실력이 뛰어나요!",
+				"음정을 정확히 맞추고 있어요!"
+			);
+		} else if (accuracy >= 80) {
+			messages = Arrays.asList(
+				"음정이 좋아요!",
+				"음정감이 안정적이에요!",
+				"음정을 잘 맞추고 있어요!",
+				"음정 실력이 꾸준히 향상되고 있어요!",
+				"음정감이 개선되고 있어요!"
+			);
+		} else if (accuracy >= 70) {
+			messages = Arrays.asList(
+				"음정이 괜찮아요!",
+				"음정 연습이 도움이 될 거예요!",
+				"음정을 조금 더 정확히 맞추면 좋겠어요!",
+				"음정 실력이 향상되고 있어요!",
+				"튜너를 활용한 연습을 추천해요!"
+			);
+		} else if (accuracy >= 60) {
+			messages = Arrays.asList(
+				"음정 연습이 필요해요!",
+				"음정감을 키우기 위해 연습하세요!",
+				"음정을 더 정확히 맞추면 좋겠어요!",
+				"음정 연습을 꾸준히 하면 나아질 거예요!",
+				"튜너를 활용한 연습을 추천해요!"
+			);
+		} else if (accuracy >= 50) {
+			messages = Arrays.asList(
+				"음정 연습이 더 필요해요!",
+				"음정감을 기르기 위해 노력하세요!",
+				"음정을 맞추는 연습을 해보세요!",
+				"음정 연습을 꾸준히 하면 좋아질 거예요!",
+				"천천히 튜너에 맞춰 연습해보세요!"
+			);
+		} else {
+			messages = Arrays.asList(
+				"음정 연습이 많이 필요해요!",
+				"음정감을 키우기 위해 꾸준히 연습하세요!",
+				"음정을 맞추는 기본 연습이 필요해요!",
+				"음정 연습을 차근차근 해보세요!",
+				"튜너와 함께 천천히 연습하면 좋아질 거예요!"
+			);
+		}
+		
+		return messages.get(random.nextInt(messages.size()));
+	}
+	
+	/**
+	 * 종합 피드백을 생성합니다. (전체 정확도와 이전 연습 비교를 고려)
+	 */
+	private String generateOverallFeedback(int overallAccuracy, List<PracticeSession> previousSessions) {
+		Random random = new Random();
+		List<String> messages;
+		
+		// 이전 연습과의 비교
+		boolean improved = false;
+		boolean declined = false;
+		if (!previousSessions.isEmpty()) {
+			PracticeSession lastSession = previousSessions.get(0);
+			int lastOverall = (lastSession.getRhythmAccuracy() + lastSession.getPitchAccuracy()) / 2;
+			if (overallAccuracy > lastOverall + 5) {
+				improved = true;
+			} else if (overallAccuracy < lastOverall - 5) {
+				declined = true;
+			}
+		}
+		
+		if (improved) {
+			messages = Arrays.asList(
+				"이전 연습보다 훨씬 좋아졌어요! 계속 이렇게 연습하세요! 🎉",
+				"실력이 눈에 띄게 향상되었어요! 정말 대단해요!",
+				"이전보다 많이 발전했어요! 꾸준히 연습하면 더 좋아질 거예요!",
+				"연습 효과가 확실히 나타나고 있어요! 멋져요!",
+				"실력 향상이 느껴져요! 계속 화이팅하세요!"
+			);
+		} else if (overallAccuracy >= 90) {
+			messages = Arrays.asList(
+				"완벽한 연습이었어요! 정말 훌륭합니다! 🎸",
+				"실력이 정말 뛰어나요! 계속 이렇게 연습하세요!",
+				"프로 수준의 연주예요! 대단합니다!",
+				"정말 잘 연주하고 있어요! 멋져요!",
+				"완벽에 가까운 연습이었어요! 계속 화이팅하세요!"
+			);
+		} else if (overallAccuracy >= 80) {
+			messages = Arrays.asList(
+				"좋은 연습이었어요! 계속 노력하세요!",
+				"실력이 꾸준히 향상되고 있어요!",
+				"잘 연주하고 있어요! 조금만 더 연습하면 완벽해질 거예요!",
+				"안정적인 연주예요! 계속 이렇게 연습하세요!",
+				"실력이 좋아지고 있어요! 화이팅!"
+			);
+		} else if (overallAccuracy >= 70) {
+			messages = Arrays.asList(
+				"괜찮은 연습이었어요! 조금만 더 노력하면 좋아질 거예요!",
+				"실력이 향상되고 있어요! 계속 연습하세요!",
+				"조금 더 연습하면 더 좋아질 거예요!",
+				"꾸준히 연습하면 실력이 늘 거예요!",
+				"좋은 방향으로 가고 있어요! 화이팅!"
+			);
+		} else if (overallAccuracy >= 60) {
+			messages = Arrays.asList(
+				"연습이 필요해요! 꾸준히 하면 좋아질 거예요!",
+				"조금 더 노력하면 실력이 늘 거예요!",
+				"기본기를 다지는 연습이 중요해요!",
+				"천천히 차근차근 연습하면 좋아질 거예요!",
+				"연습을 꾸준히 하면 실력이 향상될 거예요!"
+			);
+		} else if (overallAccuracy >= 50) {
+			messages = Arrays.asList(
+				"기본 연습이 더 필요해요! 꾸준히 하면 좋아질 거예요!",
+				"차근차근 연습하면 실력이 늘 거예요!",
+				"기본기를 탄탄히 다지는 게 중요해요!",
+				"천천히 연습하면 좋아질 거예요!",
+				"꾸준한 연습이 답이에요! 화이팅!"
+			);
+		} else {
+			messages = Arrays.asList(
+				"기본 연습을 꾸준히 하면 좋아질 거예요!",
+				"차근차근 천천히 연습하세요!",
+				"기본기를 다지는 게 중요해요!",
+				"연습을 꾸준히 하면 실력이 늘 거예요!",
+				"포기하지 말고 계속 연습하세요! 화이팅!"
+			);
+		}
+		
+		if (declined && overallAccuracy < 70) {
+			messages = Arrays.asList(
+				"이번엔 조금 아쉬웠지만, 다음엔 더 잘할 수 있어요!",
+				"오늘은 컨디션이 안 좋았을 수도 있어요. 다음 연습에서 더 좋아질 거예요!",
+				"가끔은 이런 날도 있어요. 꾸준히 연습하면 다시 좋아질 거예요!",
+				"조금만 더 집중하면 좋아질 거예요! 다음 연습을 기대해요!",
+				"오늘은 조금 아쉬웠지만, 다음엔 더 좋은 결과가 있을 거예요!"
+			);
+		}
+		
+		return messages.get(random.nextInt(messages.size()));
 	}
 	
 	/**
 	 * 섹션 정보를 메시지로 변환합니다.
 	 */
 	private String getWorstSectionMessage(PracticeSession.Section section) {
+		Random random = new Random();
+		List<String> messages;
+		
 		switch (section) {
 			case EARLY:
-				return "초반에서 연주가 가장 불안정했어요";
+				messages = Arrays.asList(
+					"초반에서 연주가 가장 불안정했어요",
+					"시작 부분의 안정성이 개선되면 좋겠어요",
+					"초반 박자/음정을 더 정확히 맞추면 좋아질 거예요",
+					"시작할 때 집중하면 더 좋은 결과가 있을 거예요",
+					"초반 연습을 더 해보면 좋겠어요"
+				);
+				break;
 			case MIDDLE:
-				return "중반에서 연주가 가장 불안정했어요";
+				messages = Arrays.asList(
+					"중반에서 연주가 가장 불안정했어요",
+					"중간 부분의 안정성이 개선되면 좋겠어요",
+					"중반 박자/음정을 더 정확히 맞추면 좋아질 거예요",
+					"중간 부분에 집중하면 더 좋은 결과가 있을 거예요",
+					"중반 연습을 더 해보면 좋겠어요"
+				);
+				break;
 			case LATE:
-				return "후반에서 연주가 가장 불안정했어요";
+				messages = Arrays.asList(
+					"후반에서 연주가 가장 불안정했어요",
+					"끝 부분의 안정성이 개선되면 좋겠어요",
+					"후반 박자/음정을 더 정확히 맞추면 좋아질 거예요",
+					"끝까지 집중하면 더 좋은 결과가 있을 거예요",
+					"후반 연습을 더 해보면 좋겠어요"
+				);
+				break;
 			default:
-				return "전체적으로 안정적인 연주였어요";
+				messages = Arrays.asList(
+					"전체적으로 안정적인 연주였어요",
+					"모든 구간에서 균형 잡힌 연주예요",
+					"전반적으로 안정적인 박자와 음정이에요",
+					"구간별로 고른 실력을 보여주고 있어요",
+					"전체적으로 일관된 연주예요"
+				);
+				break;
 		}
+		
+		return messages.get(random.nextInt(messages.size()));
 	}
 
 	/**

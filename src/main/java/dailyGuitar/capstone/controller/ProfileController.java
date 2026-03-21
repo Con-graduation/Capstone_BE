@@ -1,6 +1,7 @@
 package dailyGuitar.capstone.controller;
 
 import dailyGuitar.capstone.dto.ProfileStatsResponseDto;
+import dailyGuitar.capstone.dto.MainPageResponseDto;
 import dailyGuitar.capstone.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -36,6 +37,36 @@ public class ProfileController {
     public ResponseEntity<ProfileStatsResponseDto> getStats() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         ProfileStatsResponseDto dto = userService.getProfileStats(auth.getName());
+        return ResponseEntity.ok(dto);
+    }
+
+    @Operation(summary = "메인 페이지 정보 조회", description = "메인 페이지에 표시할 정보를 반환합니다. 유저의 스트릭과 최근 일주일간 루틴 완료 횟수를 날짜별로 제공합니다.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "조회 성공",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = MainPageResponseDto.class),
+                            examples = @ExampleObject(value = """
+                                    {
+                                      "streakDays": 7,
+                                      "weeklyPracticeCount": {
+                                        "2025-11-08": 2,
+                                        "2025-11-09": 1,
+                                        "2025-11-10": 3,
+                                        "2025-11-11": 0,
+                                        "2025-11-12": 1,
+                                        "2025-11-13": 2,
+                                        "2025-11-14": 1
+                                      }
+                                    }
+                                    """)))
+    })
+    @GetMapping("/main")
+    public ResponseEntity<MainPageResponseDto> getMainPageInfo() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null) {
+            return ResponseEntity.status(401).build();
+        }
+        MainPageResponseDto dto = userService.getMainPageInfo(auth.getName());
         return ResponseEntity.ok(dto);
     }
 }

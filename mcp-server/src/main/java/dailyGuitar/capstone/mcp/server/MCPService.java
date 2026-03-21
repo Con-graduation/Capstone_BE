@@ -1,8 +1,10 @@
 package dailyGuitar.capstone.mcp.server;
 
 import dailyGuitar.capstone.mcp.repository.PracticeRoutineRepository;
+import dailyGuitar.capstone.mcp.repository.PracticeSessionRepository;
 import dailyGuitar.capstone.mcp.repository.UserRepository;
 import dailyGuitar.capstone.mcp.entity.PracticeRoutine;
+import dailyGuitar.capstone.mcp.entity.PracticeSession;
 import dailyGuitar.capstone.mcp.entity.User;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +25,7 @@ import java.util.stream.Collectors;
 public class MCPService {
     
     private final PracticeRoutineRepository practiceRoutineRepository;
+    private final PracticeSessionRepository practiceSessionRepository;
     private final UserRepository userRepository;
     
     /**
@@ -65,6 +68,22 @@ public class MCPService {
      */
     public Optional<PracticeRoutine> getRoutineById(Long routineId) {
         return practiceRoutineRepository.findById(routineId);
+    }
+    
+    /**
+     * 사용자의 연습 세션 목록 조회 (최신순)
+     */
+    public List<PracticeSession> getSessionsByUserId(Long userId) {
+        log.info("MCP: 사용자 {}의 연습 세션 조회", userId);
+        return practiceSessionRepository.findByUserIdOrderByCreatedAtDesc(userId);
+    }
+    
+    /**
+     * 특정 루틴의 연습 세션 조회
+     */
+    public List<PracticeSession> getSessionsByUserIdAndRoutineId(Long userId, Long routineId) {
+        log.info("MCP: 사용자 {}의 루틴 {} 연습 세션 조회", userId, routineId);
+        return practiceSessionRepository.findByUserIdAndRoutineIdOrderByCreatedAtDesc(userId, routineId);
     }
 }
 

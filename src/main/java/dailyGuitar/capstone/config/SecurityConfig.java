@@ -48,6 +48,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/login").permitAll() // 로그인은 비회원 접근 가능
                 .requestMatchers("/api/tools/**").permitAll() // 메트로놈, 튜너는 비회원 접근 가능
                 .requestMatchers("/api/chords/**").permitAll() // 코드 도감은 비회원 접근 가능
+                .requestMatchers("/api/mcp-ai/**").authenticated() // MCP AI 통합은 인증 필요
                 .requestMatchers("/swagger-ui/**").permitAll() // Swagger UI
                 .requestMatchers("/swagger-ui.html").permitAll() // Swagger UI (fallback)
                 .requestMatchers("/api-docs", "/api-docs/**", "/v3/api-docs", "/v3/api-docs/**").permitAll() // API 문서 경로들
